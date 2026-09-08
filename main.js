@@ -87,7 +87,51 @@ mapa.on('click', (e) => {
     }
 });
 
-// 5. Finalização do Traçado da Fibra no Duplo Clique
+// Captura do novo botão no DOM
+const btnConcluirFibra = document.getElementById('btn-concluir-fibra');
+
+// 4. Captura de Eventos no Mapa
+mapa.on('click', (e) => {
+    // Ação no Modo CAIXAS
+    if (menu.modoAtivo === 'CAIXAS') {
+        coordsTempCaixa = e.latlng;
+        document.getElementById('nome-caixa').value = `${selectTipo.value}-0${idContadorCaixa}`;
+        modalCaixa.style.display = 'block';
+        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
+        return;
+    }
+
+    // Ação no Modo FIBRAS (Desenho Sequencial)
+    if (menu.modoAtivo === 'FIBRAS') {
+        pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
+
+        if (!linhaEmProgresso) {
+            linhaEmProgresso = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+        } else {
+            linhaEmProgresso.setLatLngs(pontosCaboTemp);
+        }
+
+        // Exibe o botão de concluir assim que tiver pelo menos 2 pontos marcados
+        if (pontosCaboTemp.length >= 2 && btnConcluirFibra) {
+            btnConcluirFibra.style.display = 'inline-block';
+        }
+    }
+});
+
+// 5. Finalização do Traçado da Fibra via BOTÃO (Ideal para Mobile)
+if (btnConcluirFibra) {
+    btnConcluirFibra.addEventListener('click', () => {
+        if (pontosCaboTemp.length < 2) {
+            alert("Desenhe pelo menos 2 pontos no mapa antes de finalizar o cabo.");
+            return;
+        }
+
+        document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
+        modalFibra.style.display = 'block';
+    });
+}
+
+// Mantemos o dblclick como atalho opcional para desktop
 mapa.on('dblclick', (e) => {
     if (menu.modoAtivo !== 'FIBRAS' || pontosCaboTemp.length < 2) return;
 
@@ -131,6 +175,7 @@ btnCancelarFibra.addEventListener('click', () => {
 
 function fecharModalFibra() {
     modalFibra.style.display = 'none';
+    if (btnConcluirFibra) btnConcluirFibra.style.display = 'none'; // Esconde o botão
     pontosCaboTemp = [];
     linhaEmProgresso = null;
     menu.limparModo();
