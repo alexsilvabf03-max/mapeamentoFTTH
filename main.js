@@ -13,7 +13,7 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // 2. Inicializa o Menu
 const menu = new MenuManager();
 
-// Mapeamento dos Modais no DOM
+// Mapeamento dos Modais e Elementos no DOM
 const modalCaixa = document.getElementById('modal-caixa');
 const modalFibra = document.getElementById('modal-fibra');
 
@@ -27,14 +27,31 @@ const btnCancelarCaixa = document.getElementById('btn-cancelar');
 const btnSalvarFibra = document.getElementById('btn-salvar-fibra');
 const btnCancelarFibra = document.getElementById('btn-cancelar-fibra');
 
+const btnGps = document.getElementById('btn-gps');
+const btnGpsModal = document.getElementById('btn-usar-gps-form');
+
 let idContadorCaixa = 1;
 let idContadorFibra = 1;
 
 let coordsTempCaixa = null;
 
-// Variáveis de Controle para Traçado de Fibras
+// Variáveis de Controle para Traçado de Fibras e GPS
 let pontosCaboTemp = [];
 let linhaEmProgresso = null;
+let marcadorUsuario = null;
+let circuloPrecisao = null;
+let posicaoGpsAtual = null;
+
+// Helper para preencher coordenadas no formulário
+function preencherInputsCoordenadas(lat, lng) {
+    const inputLat = document.getElementById('caixa-lat');
+    const inputLng = document.getElementById('caixa-lng');
+
+    if (inputLat && inputLng) {
+        inputLat.value = lat.toFixed(6);
+        inputLng.value = lng.toFixed(6);
+    }
+}
 
 // 3. Alternância Dinâmica de Campos no Modal de Caixa
 selectTipo.addEventListener('change', () => {
@@ -54,6 +71,7 @@ mapa.on('click', (e) => {
         coordsTempCaixa = e.latlng;
         document.getElementById('nome-caixa').value = `${selectTipo.value}-0${idContadorCaixa}`;
         modalCaixa.style.display = 'block';
+        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
         return;
     }
 
@@ -61,11 +79,9 @@ mapa.on('click', (e) => {
     if (menu.modoAtivo === 'FIBRAS') {
         pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
 
-        // Se for o primeiro ponto, cria o objeto Polyline no mapa
         if (!linhaEmProgresso) {
             linhaEmProgresso = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
         } else {
-            // Atualiza o traçado existente adicionando o novo ponto
             linhaEmProgresso.setLatLngs(pontosCaboTemp);
         }
     }
@@ -75,7 +91,6 @@ mapa.on('click', (e) => {
 mapa.on('dblclick', (e) => {
     if (menu.modoAtivo !== 'FIBRAS' || pontosCaboTemp.length < 2) return;
 
-    // Exibe o modal de fibra para informar as sobras
     document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
     modalFibra.style.display = 'block';
 });
@@ -86,7 +101,6 @@ btnSalvarFibra.addEventListener('click', () => {
     const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
     const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
 
-    // Cálculo da metragem total do traçado (em metros) no mapa
     let distanciaMapa = 0;
     for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
         const p1 = L.latLng(pontosCaboTemp[i]);
@@ -96,7 +110,6 @@ btnSalvarFibra.addEventListener('click', () => {
 
     const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
 
-    // Vincula balão de informações à linha do cabo
     linhaEmProgresso.bindPopup(`
         <b>Identificação:</b> ${identificacao}<br>
         <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
@@ -111,7 +124,7 @@ btnSalvarFibra.addEventListener('click', () => {
 
 btnCancelarFibra.addEventListener('click', () => {
     if (linhaEmProgresso) {
-        mapa.removeLayer(linhaEmProgresso); // Remove o traçado do mapa se cancelar
+        mapa.removeLayer(linhaEmProgresso);
     }
     fecharModalFibra();
 });
@@ -152,28 +165,11 @@ btnSalvarCaixa.addEventListener('click', () => {
     marcador.bindPopup(novaCaixa.obterInfoPopup());
 
     fecharModalCaixa();
+});
 
-   // ==========================================
-// CONTROLE DE LOCALIZAÇÃO VIA GPS (UNIFICADO)
 // ==========================================
-
-const btnGps = document.getElementById('btn-gps');
-const btnGpsModal = document.getElementById('btn-usar-gps-form');
-
-let marcadorUsuario = null;
-let circuloPrecisao = null;
-let posicaoGpsAtual = null;
-
-// Função utilitária para preencher os inputs de coordenadas no modal
-function preencherInputsCoordenadas(lat, lng) {
-    const inputLat = document.getElementById('caixa-lat');
-    const inputLng = document.getElementById('caixa-lng');
-
-    if (inputLat && inputLng) {
-        inputLat.value = lat.toFixed(6);
-        inputLng.value = lng.toFixed(6);
-    }
-}
+// CONTROLE DE LOCALIZAÇÃO VIA GPS (INDEPENDENTE)
+// ==========================================
 
 // 1. Clique no botão principal "🎯 Minha Posição"
 if (btnGps) {
@@ -212,15 +208,12 @@ mapa.on('locationfound', (e) => {
     posicaoGpsAtual = e.latlng;
     const raio = e.accuracy.toFixed(1);
 
-    // Reseta textos dos botões
     if (btnGps) btnGps.innerText = "🎯 Minha Posição";
     if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
 
-    // Limpa marcações antigas do mapa
     if (marcadorUsuario) mapa.removeLayer(marcadorUsuario);
     if (circuloPrecisao) mapa.removeLayer(circuloPrecisao);
 
-    // Cria o círculo de precisão ao redor da posição
     circuloPrecisao = L.circle(e.latlng, e.accuracy, {
         color: '#1e88e5',
         fillColor: '#1e88e5',
@@ -228,7 +221,6 @@ mapa.on('locationfound', (e) => {
         weight: 1
     }).addTo(mapa);
 
-    // Ponto azul indicando a posição exata
     marcadorUsuario = L.circleMarker(e.latlng, {
         radius: 8,
         fillColor: '#1e88e5',
@@ -240,8 +232,10 @@ mapa.on('locationfound', (e) => {
 
     marcadorUsuario.bindPopup(`<b>Você está aqui!</b><br>Precisão do GPS: ~${raio}m`).openPopup();
 
-    // Se o modal de cadastro estiver aberto, preenche as coordenadas automaticamente
-    preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
+    // Se o modal de caixa estiver visível na tela, preenche com o GPS
+    if (modalCaixa && modalCaixa.style.display !== 'none') {
+        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
+    }
 });
 
 // 4. Trata erros de permissão ou falha de GPS
@@ -249,27 +243,4 @@ mapa.on('locationerror', (e) => {
     if (btnGps) btnGps.innerText = "🎯 Minha Posição";
     if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
     alert("Não foi possível obter sua localização: " + e.message + "\nVerifique se o GPS está ativo.");
-});
-
-// 5. EVENTO DO MAPA: Clique no mapa para implantar caixa
-mapa.on('click', (e) => {
-    const modalCaixa = document.getElementById('modal-caixa');
-    if (modalCaixa && modalCaixa.style.display !== 'none') {
-        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
-    }
-});
-
-    // Se o modal de cadastro estiver visível na tela, atualiza com a coordenada real do GPS
-    const modalCaixa = document.getElementById('modal-caixa');
-    if (modalCaixa && modalCaixa.style.display !== 'none') {
-        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
-    }
-});
-
-// Tratamento de erro na busca do GPS
-mapa.on('locationerror', (e) => {
-    if (btnGpsModal) {
-        btnGpsModal.innerText = "📍 Capturar Posição GPS";
-    }
-    alert("Não foi possível obter a precisão do GPS: " + e.message);
 });
