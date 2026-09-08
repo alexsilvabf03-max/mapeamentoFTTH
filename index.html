@@ -98,20 +98,63 @@
 #btn-gps:hover {
     background-color: #f4f4f4;
 }
+
+/* Seção de Geolocalização no Modal de Cadastro */
+.grupo-gps-modal {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.titulo-gps {
+    font-size: 0.9em;
+    color: #333;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.input-coordenada {
+    background-color: #eef2f5 !important;
+    font-family: monospace;
+}
+
+.btn-gps-capturar {
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    background-color: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.btn-gps-capturar:hover {
+    background-color: #bbdefb;
+}
+
+.btn-gps-capturar:active {
+    background-color: #90caf9;
+}
     </style>
 
     <script type="module" src="main.js"></script>
 </head>
 <body>
 
-    <!-- Painel de ferramentas -->
-    <div id="menu-painel">
+   <!-- Painel de ferramentas -->
+<div id="menu-painel">
     <strong>Ferramentas</strong>
     <button id="btn-caixas">📦 Caixas</button>
     <button id="btn-fibras">🧵 Fibras</button>
     <div id="status-modo">Modo: Navegação</div>
 </div>
-    <!-- Estrutura da Popup / Modal -->
+
+<!-- Estrutura da Popup / Modal -->
 <div id="modal-caixa" class="modal" style="display: none;">
     <h3>Cadastrar Elemento de Rede</h3>
 
@@ -125,6 +168,21 @@
     <!-- Campos Comuns -->
     <label for="nome-caixa">Identificação / Nome:</label>
     <input type="text" id="nome-caixa" placeholder="Ex: CTO-01">
+
+    <!-- NOVOS CAMPOS DE GEOLOCALIZAÇÃO -->
+    <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; background-color: #f9f9f9;">
+        <strong style="font-size: 0.9em; color: #333;">Coordenadas GPS:</strong>
+        
+        <label for="caixa-lat" style="margin-top: 5px;">Latitude:</label>
+        <input type="text" id="caixa-lat" placeholder="-3.XXXXXX" readonly style="background-color: #eef2f5;">
+
+        <label for="caixa-lng">Longitude:</label>
+        <input type="text" id="caixa-lng" placeholder="-38.XXXXXX" readonly style="background-color: #eef2f5;">
+
+        <button type="button" id="btn-usar-gps-form" style="width: 100%; margin-top: 8px; padding: 8px; background-color: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; border-radius: 4px; font-weight: bold; cursor: pointer;">
+            📍 Capturar Posição GPS
+        </button>
+    </div>
 
     <label for="qtd-fibras-entrantes">Qtd. Fibras Entrantes:</label>
     <input type="number" id="qtd-fibras-entrantes" placeholder="Ex: 2">
@@ -143,7 +201,6 @@
 
         <label for="portas-atendimento">Portas de Atendimento:</label>
         <input type="number" id="portas-atendimento" placeholder="Ex: 16">
-
     </div>
 
     <!-- Campos Específicos da CEO -->
@@ -166,9 +223,9 @@
     </div>
 </div>
 
-    <div id="map" style="height: 100vh; width: 100%;"></div>
+<div id="map" style="height: 100vh; width: 100%;"></div>
 
-    <!-- Modal para Finalizar Traçado da Fibra -->
+<!-- Modal para Finalizar Traçado da Fibra -->
 <div id="modal-fibra" class="modal" style="display: none;">
     <h3>Cadastro de Cabo / Fibra</h3>
 
@@ -187,7 +244,7 @@
     </div>
 </div>
 
-    <!-- Botão de GPS -->
+<!-- Botão de GPS -->
 <button id="btn-gps" class="btn-controle" title="Minha Localização">
     🎯 Minha Posição
 </button>

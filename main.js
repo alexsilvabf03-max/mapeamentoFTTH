@@ -202,4 +202,68 @@ mapa.on('locationerror', (e) => {
     btnGps.innerText = "🎯 Minha Posição";
     alert("Não foi possível obter sua localização. Verifique se a permissão de GPS está ativa no navegador.");
 });
+
+// Variável para armazenar as últimas coordenadas capturadas pelo GPS
+let posicaoGpsAtual = null;
+
+// Função utilitária para preencher os inputs de coordenadas no modal
+function preencherInputsCoordenadas(lat, lng) {
+    const inputLat = document.getElementById('caixa-lat');
+    const inputLng = document.getElementById('caixa-lng');
+
+    if (inputLat && inputLng) {
+        inputLat.value = lat.toFixed(6);
+        inputLng.value = lng.toFixed(6);
+    }
+}
+
+// -------------------------------------------------------------
+// 1. EVENTO DO MAPA: Ao clicar no mapa para implantar caixa
+// -------------------------------------------------------------
+mapa.on('click', (e) => {
+    // Se o modal estiver sendo aberto via clique no mapa, preenche com as coordenadas do clique
+    const modalCaixa = document.getElementById('modal-caixa');
+    if (modalCaixa) {
+        modalCaixa.style.display = 'block';
+        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
+    }
+});
+
+// -------------------------------------------------------------
+// 2. EVENTO DO GPS: Ao clicar no botão "📍 Capturar Posição GPS" no Modal
+// -------------------------------------------------------------
+const btnGpsModal = document.getElementById('btn-usar-gps-form');
+if (btnGpsModal) {
+    btnGpsModal.addEventListener('click', () => {
+        btnGpsModal.innerText = "⏳ Obtendo posição...";
+        // Força o Leaflet a buscar a localização com máxima precisão do chip
+        mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    });
+}
+
+// -------------------------------------------------------------
+// 3. EVENTO DO LEAFLET: Quando a localização é encontrada com sucesso
+// -------------------------------------------------------------
+mapa.on('locationfound', (e) => {
+    posicaoGpsAtual = e.latlng;
+
+    // Reseta o texto do botão do modal se ele existir
+    if (btnGpsModal) {
+        btnGpsModal.innerText = "📍 Capturar Posição GPS";
+    }
+
+    // Se o modal de cadastro estiver visível na tela, atualiza com a coordenada real do GPS
+    const modalCaixa = document.getElementById('modal-caixa');
+    if (modalCaixa && modalCaixa.style.display !== 'none') {
+        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
+    }
+});
+
+// Tratamento de erro na busca do GPS
+mapa.on('locationerror', (e) => {
+    if (btnGpsModal) {
+        btnGpsModal.innerText = "📍 Capturar Posição GPS";
+    }
+    alert("Não foi possível obter a precisão do GPS: " + e.message);
+});
 });
