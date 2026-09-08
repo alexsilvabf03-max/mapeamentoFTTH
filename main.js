@@ -101,7 +101,7 @@ mapa.on('click', (e) => {
         return;
     }
 
-    // Ação no Modo FIBRAS (Desenho Sequencial)
+    // Modo FIBRAS (Desenho Sequencial)
     if (menu.modoAtivo === 'FIBRAS') {
         pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
 
@@ -111,12 +111,11 @@ mapa.on('click', (e) => {
             linhaEmProgresso.setLatLngs(pontosCaboTemp);
         }
 
-        // Exibe o botão de concluir assim que tiver pelo menos 2 pontos marcados
+        // Exibe o botão de concluir assim que tiver pelo menos 2 pontos
         if (pontosCaboTemp.length >= 2 && btnConcluirFibra) {
             btnConcluirFibra.style.display = 'inline-block';
         }
     }
-});
 
 // 5. Finalização do Traçado da Fibra via BOTÃO (Ideal para Mobile)
 if (btnConcluirFibra) {
@@ -141,10 +140,12 @@ mapa.on('dblclick', (e) => {
 
 // 6. Salvamento da Fibra
 btnSalvarFibra.addEventListener('click', () => {
+    // 1. Coleta e validação dos inputs do modal
     const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
     const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
     const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
 
+    // 2. Cálculo da distância geodésica do traçado
     let distanciaMapa = 0;
     for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
         const p1 = L.latLng(pontosCaboTemp[i]);
@@ -154,7 +155,11 @@ btnSalvarFibra.addEventListener('click', () => {
 
     const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
 
-    linhaEmProgresso.bindPopup(`
+    // 3. Adiciona a linha definitiva da fibra no mapa
+    const fibraDefinitiva = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+
+    // 4. Vincula o Popup com as métricas do cabo
+    fibraDefinitiva.bindPopup(`
         <b>Identificação:</b> ${identificacao}<br>
         <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
         <b>Sobra Ponto A:</b> ${sobraA}m<br>
@@ -162,23 +167,189 @@ btnSalvarFibra.addEventListener('click', () => {
         <b>Metragem Total:</b> ${metragemTotal}m
     `);
 
+    // 5. Evento de Clique na Fibra para o Módulo de NAVEGAÇÃO GPS
+    fibraDefinitiva.on('click', (e) => {
+        L.DomEvent.stopPropagation(e); // Evita acionar cliques padrão no mapa
+        selecionarFibraParaNavegar(fibraDefinitiva, { 
+            identificacao: identificacao,
+            metragemTotal: metragemTotal
+        });
+    });
+
+    // 6. Salvamento da Fibra
+btnSalvarFibra.addEventListener('click', () => {
+    // 1. Coleta e validação dos inputs do modal
+    const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
+    const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
+    const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
+
+    // 2. Cálculo da distância geodésica do traçado
+    let distanciaMapa = 0;
+    for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
+        const p1 = L.latLng(pontosCaboTemp[i]);
+        const p2 = L.latLng(pontosCaboTemp[i + 1]);
+        distanciaMapa += p1.distanceTo(p2);
+    }
+
+    const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
+
+    // 3. Adiciona a linha definitiva da fibra no mapa
+    const fibraDefinitiva = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+
+    // 4. Vincula o Popup com as métricas do cabo
+    fibraDefinitiva.bindPopup(`
+        <b>Identificação:</b> ${identificacao}<br>
+        <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
+        <b>Sobra Ponto A:</b> ${sobraA}m<br>
+        <b>Sobra Ponto B:</b> ${sobraB}m<br>
+        <b>Metragem Total:</b> ${metragemTotal}m
+    `);
+
+    // 5. Evento de Clique na Fibra para o Módulo de NAVEGAÇÃO GPS
+    fibraDefinitiva.on('click', (e) => {
+        L.DomEvent.stopPropagation(e); // Evita acionar cliques padrão no mapa
+        selecionarFibraParaNavegar(fibraDefinitiva, { 
+            identificacao: identificacao,
+            metragemTotal: metragemTotal
+        });
+    });
+
+   // 6. Salvamento da Fibra
+btnSalvarFibra.addEventListener('click', () => {
+    // 1. Coleta e validação dos inputs do modal
+    const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
+    const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
+    const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
+
+    // 2. Cálculo da distância geodésica do traçado
+    let distanciaMapa = 0;
+    for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
+        const p1 = L.latLng(pontosCaboTemp[i]);
+        const p2 = L.latLng(pontosCaboTemp[i + 1]);
+        distanciaMapa += p1.distanceTo(p2);
+    }
+
+    const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
+
+    // 3. Adiciona a linha definitiva da fibra no mapa
+    const fibraDefinitiva = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+
+    // 4. Vincula o Popup com as métricas do cabo
+    fibraDefinitiva.bindPopup(`
+        <b>Identificação:</b> ${identificacao}<br>
+        <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
+        <b>Sobra Ponto A:</b> ${sobraA}m<br>
+        <b>Sobra Ponto B:</b> ${sobraB}m<br>
+        <b>Metragem Total:</b> ${metragemTotal}m
+    `);
+
+    // 5. Evento de Clique na Fibra para o Módulo de NAVEGAÇÃO GPS
+    fibraDefinitiva.on('click', (e) => {
+        L.DomEvent.stopPropagation(e); // Evita acionar cliques padrão no mapa
+        selecionarFibraParaNavegar(fibraDefinitiva, { 
+            identificacao: identificacao,
+            metragemTotal: metragemTotal
+        });
+    });
+
+    // 6. Remove a linha temporária de desenho do mapa
+    if (linhaEmProgresso) {
+        mapa.removeLayer(linhaEmProgresso);
+    }
+
+    // 7. Incrementa o contador e fecha o modal
     idContadorFibra++;
     fecharModalFibra();
 });
 
-btnCancelarFibra.addEventListener('click', () => {
-    if (linhaEmProgresso) {
-        mapa.removeLayer(linhaEmProgresso);
-    }
-    fecharModalFibra();
-});
+// Evento de Cancelamento
+if (btnCancelarFibra) {
+    btnCancelarFibra.addEventListener('click', () => {
+        if (linhaEmProgresso) {
+            mapa.removeLayer(linhaEmProgresso);
+        }
+        fecharModalFibra();
+    });
+}
 
+// Função de Fechamento do Modal e Limpeza de Estado
 function fecharModalFibra() {
     modalFibra.style.display = 'none';
-    if (btnConcluirFibra) btnConcluirFibra.style.display = 'none'; // Esconde o botão
+    if (btnConcluirFibra) {
+        btnConcluirFibra.style.display = 'none'; // Esconde o botão verde do painel
+    }
     pontosCaboTemp = [];
     linhaEmProgresso = null;
     menu.limparModo();
+}
+
+// ==========================================
+// MÓDULO DE NAVEGAÇÃO GUIADA POR FIBRA VIA GPS
+// ==========================================
+
+let fibraSelecionada = null; 
+let modoNavegacaoAtivo = false;
+const btnNavegacao = document.getElementById('btn-navegacao');
+
+function selecionarFibraParaNavegar(camadaPolyline, dadosFibra) {
+    // Restaura a cor da fibra anterior se houver
+    if (fibraSelecionada && fibraSelecionada.layer) {
+        fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
+    }
+
+    // Define a nova fibra selecionada e aplica destaque visual (laranja grosso)
+    fibraSelecionada = {
+        layer: camadaPolyline,
+        dados: dadosFibra
+    };
+
+    fibraSelecionada.layer.setStyle({ color: '#ff9800', weight: 6 });
+    alert(`Fibra "${dadosFibra.identificacao}" selecionada! Clique em "Iniciar Navegação" para acompanhar no GPS.`);
+}
+
+if (btnNavegacao) {
+    btnNavegacao.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!fibraSelecionada && !modoNavegacaoAtivo) {
+            alert("⚠️ Selecione primeiro qual fibra você deseja acompanhar no mapa!");
+            return;
+        }
+
+        if (modoNavegacaoAtivo) {
+            // Parar Navegação
+            mapa.stopLocate();
+            modoNavegacaoAtivo = false;
+            
+            btnNavegacao.innerText = "🧭 Iniciar Navegação";
+            btnNavegacao.style.backgroundColor = "";
+            btnNavegacao.style.color = "";
+
+            if (fibraSelecionada && fibraSelecionada.layer) {
+                fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
+            }
+        } else {
+            // Iniciar Navegação Contínua
+            modoNavegacaoAtivo = true;
+            
+            btnNavegacao.innerText = "🛑 Parar Navegação";
+            btnNavegacao.style.backgroundColor = "#dc3545";
+            btnNavegacao.style.color = "#ffffff";
+
+            if (fibraSelecionada && fibraSelecionada.layer) {
+                mapa.fitBounds(fibraSelecionada.layer.getBounds(), { padding: [50, 50] });
+            }
+
+            mapa.locate({ 
+                setView: true, 
+                maxZoom: 19, 
+                watch: true, 
+                enableHighAccuracy: true,
+                maximumAge: 1000 
+            });
+        }
+    });
 }
 
 // 7. Handlers de Caixas
@@ -289,3 +460,69 @@ mapa.on('locationerror', (e) => {
     if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
     alert("Não foi possível obter sua localização: " + e.message + "\nVerifique se o GPS está ativo.");
 });
+
+// ==========================================
+// MÓDULO DE NAVEGAÇÃO GUIADA POR FIBRA
+// ==========================================
+
+let fibraSelecionada = null; 
+let modoNavegacaoAtivo = false;
+const btnNavegacao = document.getElementById('btn-navegacao');
+
+function selecionarFibraParaNavegar(camadaPolyline, dadosFibra) {
+    if (fibraSelecionada && fibraSelecionada.layer) {
+        fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
+    }
+
+    fibraSelecionada = {
+        layer: camadaPolyline,
+        dados: dadosFibra
+    };
+
+    fibraSelecionada.layer.setStyle({ color: '#ff9800', weight: 6 });
+    alert(`Fibra "${dadosFibra?.identificacao || 'Selecionada'}" marcada! Clique em "Iniciar Navegação" para acompanhar no GPS.`);
+}
+
+if (btnNavegacao) {
+    btnNavegacao.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!fibraSelecionada && !modoNavegacaoAtivo) {
+            alert("⚠️ Selecione primeiro qual fibra você deseja acompanhar no mapa!");
+            return;
+        }
+
+        if (modoNavegacaoAtivo) {
+            mapa.stopLocate();
+            modoNavegacaoAtivo = false;
+            
+            btnNavegacao.innerText = "🧭 Iniciar Navegação";
+            btnNavegacao.style.backgroundColor = "";
+            btnNavegacao.style.color = "";
+
+            if (fibraSelecionada && fibraSelecionada.layer) {
+                fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
+            }
+        } else {
+            modoNavegacaoAtivo = true;
+            
+            btnNavegacao.innerText = "🛑 Parar Navegação";
+            btnNavegacao.style.backgroundColor = "#dc3545";
+            btnNavegacao.style.color = "#ffffff";
+
+            if (fibraSelecionada && fibraSelecionada.layer) {
+                mapa.fitBounds(fibraSelecionada.layer.getBounds(), { padding: [50, 50] });
+            }
+
+            mapa.locate({ 
+                setView: true, 
+                maxZoom: 19, 
+                watch: true, 
+                enableHighAccuracy: true,
+                maximumAge: 1000 
+            });
+        }
+    });
+}
+
