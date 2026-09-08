@@ -1,0 +1,205 @@
+import { CTO } from './caixas/CTO.js';
+import { CEO } from './caixas/CEO.js';
+import { MenuManager } from './interface/MenuManager.js';
+
+// 1. Inicializa o Mapa
+const mapa = L.map('map', { doubleClickZoom: false }).setView([-3.7319, -38.5267], 14);
+
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+}).addTo(mapa);
+
+// 2. Inicializa o Menu
+const menu = new MenuManager();
+
+// Mapeamento dos Modais no DOM
+const modalCaixa = document.getElementById('modal-caixa');
+const modalFibra = document.getElementById('modal-fibra');
+
+const selectTipo = document.getElementById('tipo-caixa');
+const divCamposCTO = document.getElementById('campos-cto');
+const divCamposCEO = document.getElementById('campos-ceo');
+
+const btnSalvarCaixa = document.getElementById('btn-salvar');
+const btnCancelarCaixa = document.getElementById('btn-cancelar');
+
+const btnSalvarFibra = document.getElementById('btn-salvar-fibra');
+const btnCancelarFibra = document.getElementById('btn-cancelar-fibra');
+
+let idContadorCaixa = 1;
+let idContadorFibra = 1;
+
+let coordsTempCaixa = null;
+
+// Variáveis de Controle para Traçado de Fibras
+let pontosCaboTemp = [];
+let linhaEmProgresso = null;
+
+// 3. Alternância Dinâmica de Campos no Modal de Caixa
+selectTipo.addEventListener('change', () => {
+    if (selectTipo.value === 'CTO') {
+        divCamposCTO.style.display = 'block';
+        divCamposCEO.style.display = 'none';
+    } else {
+        divCamposCTO.style.display = 'none';
+        divCamposCEO.style.display = 'block';
+    }
+});
+
+// 4. Captura de Eventos no Mapa
+mapa.on('click', (e) => {
+    // Ação no Modo CAIXAS
+    if (menu.modoAtivo === 'CAIXAS') {
+        coordsTempCaixa = e.latlng;
+        document.getElementById('nome-caixa').value = `${selectTipo.value}-0${idContadorCaixa}`;
+        modalCaixa.style.display = 'block';
+        return;
+    }
+
+    // Ação no Modo FIBRAS (Desenho Sequencial)
+    if (menu.modoAtivo === 'FIBRAS') {
+        pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
+
+        // Se for o primeiro ponto, cria o objeto Polyline no mapa
+        if (!linhaEmProgresso) {
+            linhaEmProgresso = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+        } else {
+            // Atualiza o traçado existente adicionando o novo ponto
+            linhaEmProgresso.setLatLngs(pontosCaboTemp);
+        }
+    }
+});
+
+// 5. Finalização do Traçado da Fibra no Duplo Clique
+mapa.on('dblclick', (e) => {
+    if (menu.modoAtivo !== 'FIBRAS' || pontosCaboTemp.length < 2) return;
+
+    // Exibe o modal de fibra para informar as sobras
+    document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
+    modalFibra.style.display = 'block';
+});
+
+// 6. Salvamento da Fibra
+btnSalvarFibra.addEventListener('click', () => {
+    const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
+    const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
+    const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
+
+    // Cálculo da metragem total do traçado (em metros) no mapa
+    let distanciaMapa = 0;
+    for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
+        const p1 = L.latLng(pontosCaboTemp[i]);
+        const p2 = L.latLng(pontosCaboTemp[i + 1]);
+        distanciaMapa += p1.distanceTo(p2);
+    }
+
+    const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
+
+    // Vincula balão de informações à linha do cabo
+    linhaEmProgresso.bindPopup(`
+        <b>Identificação:</b> ${identificacao}<br>
+        <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
+        <b>Sobra Ponto A:</b> ${sobraA}m<br>
+        <b>Sobra Ponto B:</b> ${sobraB}m<br>
+        <b>Metragem Total:</b> ${metragemTotal}m
+    `);
+
+    idContadorFibra++;
+    fecharModalFibra();
+});
+
+btnCancelarFibra.addEventListener('click', () => {
+    if (linhaEmProgresso) {
+        mapa.removeLayer(linhaEmProgresso); // Remove o traçado do mapa se cancelar
+    }
+    fecharModalFibra();
+});
+
+function fecharModalFibra() {
+    modalFibra.style.display = 'none';
+    pontosCaboTemp = [];
+    linhaEmProgresso = null;
+    menu.limparModo();
+}
+
+// 7. Handlers de Caixas
+btnCancelarCaixa.addEventListener('click', fecharModalCaixa);
+
+function fecharModalCaixa() {
+    modalCaixa.style.display = 'none';
+    coordsTempCaixa = null;
+    menu.limparModo();
+}
+
+btnSalvarCaixa.addEventListener('click', () => {
+    if (!coordsTempCaixa) return;
+
+    const tipo = selectTipo.value;
+    const nome = document.getElementById('nome-caixa').value || "Sem Nome";
+    const coords = [coordsTempCaixa.lat, coordsTempCaixa.lng];
+
+    let novaCaixa;
+    if (tipo === 'CTO') {
+        const portas = parseInt(document.getElementById('portas-atendimento').value, 10) || 16;
+        novaCaixa = new CTO(idContadorCaixa++, nome, coords, portas);
+    } else {
+        const fusoes = parseInt(document.getElementById('qtd-fusoes').value, 10) || 48;
+        novaCaixa = new CEO(idContadorCaixa++, nome, coords, fusoes);
+    }
+
+    const marcador = L.marker(novaCaixa.coords).addTo(mapa);
+    marcador.bindPopup(novaCaixa.obterInfoPopup());
+
+    fecharModalCaixa();
+
+    // ==========================================
+// CONTROLE DE LOCALIZAÇÃO VIA GPS
+// ==========================================
+const btnGps = document.getElementById('btn-gps');
+let marcadorUsuario = null;
+let circuloPrecisao = null;
+
+btnGps.addEventListener('click', () => {
+    btnGps.innerText = "⏳ Localizando...";
+    
+    // Dispara a busca do GPS pelo navegador
+    mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+});
+
+// Evento quando o GPS encontra a posição com sucesso
+mapa.on('locationfound', (e) => {
+    btnGps.innerText = "🎯 Minha Posição";
+    const raio = e.accuracy.toFixed(1); // Precisão em metros
+
+    // Limpa marcações antigas do GPS se já existirem
+    if (marcadorUsuario) mapa.removeLayer(marcadorUsuario);
+    if (circuloPrecisao) mapa.removeLayer(circuloPrecisao);
+
+    // Cria o círculo de precisão ao redor da posição
+    circuloPrecisao = L.circle(e.latlng, e.accuracy, {
+        color: '#1e88e5',
+        fillColor: '#1e88e5',
+        fillOpacity: 0.15,
+        weight: 1
+    }).addTo(mapa);
+
+    // Ponto azul indicando a posição exata
+    marcadorUsuario = L.circleMarker(e.latlng, {
+        radius: 8,
+        fillColor: '#1e88e5',
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+    }).addTo(mapa);
+
+    marcadorUsuario.bindPopup(`<b>Você está aqui!</b><br>Precisão do GPS: ~${raio}m`).openPopup();
+});
+
+// Trata erros de permissão ou falha de GPS
+mapa.on('locationerror', (e) => {
+    btnGps.innerText = "🎯 Minha Posição";
+    alert("Não foi possível obter sua localização. Verifique se a permissão de GPS está ativa no navegador.");
+});
+});

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapeador FTTH FX Telecom</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Painel flutuante por cima do mapa */
+        #menu-painel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-family: Arial, sans-serif;
+            width: 180px;
+        }
+        #menu-painel button {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #menu-painel button.ativo {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        #status-modo {
+            font-size: 12px;
+            color: #555;
+            margin-top: 10px;
+            text-align: center;
+        }
+        /* Estilo da Janela Modal (Popup) */
+.modal {
+    position: fixed;
+    top: 50%; 
+    left: 50%;
+    transform: translate(-50%, -50%); /* Centraliza perfeitamente no meio da tela */
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3); /* Sombra para dar efeito flutuante */
+    z-index: 2000; /* Garante que fique por cima do mapa */
+    width: 320px;
+    max-height: 80vh;
+    overflow-y: auto; /* Adiciona rolagem se a tela for pequena */
+}
+
+/* Estilização dos campos do formulário */
+.modal h3 { margin-top: 0; color: #333; }
+.modal label { display: block; margin-top: 10px; font-size: 12px; font-weight: bold; color: #555; }
+.modal input, .modal select, .modal textarea {
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Impede que o campo ultrapasse a largura da janela */
+}
+.modal-acoes { margin-top: 15px; display: flex; gap: 10px; }
+.modal-acoes button { flex: 1; padding: 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
+#btn-salvar { background-color: #28a745; color: white; }
+#btn-cancelar { background-color: #dc3545; color: white; }
+
+    /* Botão do GPS Flutuante no Mapa */
+#btn-gps {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background-color: #ffffff;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 50px;
+    padding: 10px 15px;
+    font-weight: bold;
+    color: #333;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#btn-gps:hover {
+    background-color: #f4f4f4;
+}
+    </style>
+
+    <script type="module" src="main.js"></script>
+</head>
+<body>
+
+    <!-- Painel de ferramentas -->
+    <div id="menu-painel">
+    <strong>Ferramentas</strong>
+    <button id="btn-caixas">📦 Caixas</button>
+    <button id="btn-fibras">🧵 Fibras</button>
+    <div id="status-modo">Modo: Navegação</div>
+</div>
+    <!-- Estrutura da Popup / Modal -->
+<div id="modal-caixa" class="modal" style="display: none;">
+    <h3>Cadastrar Elemento de Rede</h3>
+
+    <!-- Seletor do Tipo de Caixa -->
+    <label for="tipo-caixa">Tipo de Caixa:</label>
+    <select id="tipo-caixa">
+        <option value="CTO">CTO (Atendimento)</option>
+        <option value="CEO">CEO (Emenda)</option>
+    </select>
+
+    <!-- Campos Comuns -->
+    <label for="nome-caixa">Identificação / Nome:</label>
+    <input type="text" id="nome-caixa" placeholder="Ex: CTO-01">
+
+    <label for="qtd-fibras-entrantes">Qtd. Fibras Entrantes:</label>
+    <input type="number" id="qtd-fibras-entrantes" placeholder="Ex: 2">
+
+    <!-- Campos Específicos da CTO -->
+    <div id="campos-cto" style="display: block;">
+        <label for="tipo-splitagem">Tipo de Splitagem:</label>
+        <select id="tipo-splitagem">
+            <option value="1:8">1:8</option>
+            <option value="1:16">1:16</option>
+            <option value="Sem Splitter">Sem Splitter</option>
+        </select>
+
+        <label for="sinal-optico">Sinal Óptico (dBm):</label>
+        <input type="text" id="sinal-optico" placeholder="Ex: -19.5 dBm">
+
+        <label for="portas-atendimento">Portas de Atendimento:</label>
+        <input type="number" id="portas-atendimento" placeholder="Ex: 16">
+
+    </div>
+
+    <!-- Campos Específicos da CEO -->
+    <div id="campos-ceo" style="display: none;">
+        <label for="qtd-fusoes">Qtd. de Fusões Realizadas:</label>
+        <input type="number" id="qtd-fusoes" placeholder="Ex: 12">
+
+        <label for="detalhe-fusoes">Cores / Detalhes das Fusões:</label>
+        <textarea id="detalhe-fusoes" rows="2" placeholder="Ex: Verde fundida com Azul na Bandeja 1"></textarea>
+    </div>
+
+    <!-- Comentários da Fibra (Comum) -->
+    <label for="comentario-fibras">Mapeamento/Observações das Fibras:</label>
+    <textarea id="comentario-fibras" rows="3" placeholder="Ex: Fibra 1 vem da Rua A com sinal principal..."></textarea>
+
+    <!-- Botões de Ação -->
+    <div class="modal-acoes">
+        <button id="btn-salvar">Salvar no Mapa</button>
+        <button id="btn-cancelar">Cancelar</button>
+    </div>
+</div>
+
+    <div id="map" style="height: 100vh; width: 100%;"></div>
+
+    <!-- Modal para Finalizar Traçado da Fibra -->
+<div id="modal-fibra" class="modal" style="display: none;">
+    <h3>Cadastro de Cabo / Fibra</h3>
+
+    <label for="sobra-ponto-a">Sobra Técnica no Ponto A (metros):</label>
+    <input type="number" id="sobra-ponto-a" placeholder="Ex: 15" value="10">
+
+    <label for="sobra-ponto-b">Sobra Técnica no Ponto B (metros):</label>
+    <input type="number" id="sobra-ponto-b" placeholder="Ex: 15" value="10">
+
+    <label for="identificacao-cabo">Identificação do Cabo (Opcional):</label>
+    <input type="text" id="identificacao-cabo" placeholder="Ex: Cabo Drop / Tronco 12FO">
+
+    <div class="modal-acoes">
+        <button id="btn-salvar-fibra">Salvar Cabo</button>
+        <button id="btn-cancelar-fibra">Cancelar</button>
+    </div>
+</div>
+
+    <!-- Botão de GPS -->
+<button id="btn-gps" class="btn-controle" title="Minha Localização">
+    🎯 Minha Posição
+</button>
+
+</body>
+</html>
+
+
+
