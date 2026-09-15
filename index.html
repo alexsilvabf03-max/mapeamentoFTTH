@@ -3,257 +3,277 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapeador FTTH FX Telecom</title>
+    <title>Mapeador FTTH - FX Telecom</title>
 
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        /* Painel flutuante por cima do mapa */
-        #menu-painel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: #ffffff;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            font-family: Arial, sans-serif;
-            width: 180px;
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        #menu-painel button {
-            display: block;
+
+        body, html {
             width: 100%;
-            margin-top: 8px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            background: #f8f9fa;
-            cursor: pointer;
-            font-weight: bold;
+            height: 100%;
+            overflow: hidden;
         }
-        #menu-painel button.ativo {
+
+        #map {
+            width: 100%;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* Barra de Controle Superior */
+        .top-bar {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 18px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
             background-color: #007bff;
             color: white;
-            border-color: #0056b3;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
+
+        .btn:hover {
+            background-color: #0056b3;
+        }
+
+        .btn.ativo {
+            background-color: #28a745 !important;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background-color: #bd2130;
+        }
+
         #status-modo {
             font-size: 12px;
-            color: #555;
-            margin-top: 10px;
-            text-align: center;
+            font-weight: bold;
+            color: #333;
+            background: #e9ecef;
+            padding: 6px 12px;
+            border-radius: 15px;
         }
-        /* Estilo da Janela Modal (Popup) */
-.modal {
-    position: fixed;
-    top: 50%; 
-    left: 50%;
-    transform: translate(-50%, -50%); /* Centraliza perfeitamente no meio da tela */
-    background: #ffffff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3); /* Sombra para dar efeito flutuante */
-    z-index: 2000; /* Garante que fique por cima do mapa */
-    width: 320px;
-    max-height: 80vh;
-    overflow-y: auto; /* Adiciona rolagem se a tela for pequena */
-}
 
-/* Estilização dos campos do formulário */
-.modal h3 { margin-top: 0; color: #333; }
-.modal label { display: block; margin-top: 10px; font-size: 12px; font-weight: bold; color: #555; }
-.modal input, .modal select, .modal textarea {
-    width: 100%;
-    padding: 8px;
-    margin-top: 4px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box; /* Impede que o campo ultrapasse a largura da janela */
-}
-.modal-acoes { margin-top: 15px; display: flex; gap: 10px; }
-.modal-acoes button { flex: 1; padding: 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
-#btn-salvar { background-color: #28a745; color: white; }
-#btn-cancelar { background-color: #dc3545; color: white; }
+        /* Modais */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
 
-    /* Botão do GPS Flutuante no Mapa */
-#btn-gps {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1000;
-    background-color: #ffffff;
-    border: 2px solid rgba(0,0,0,0.2);
-    border-radius: 50px;
-    padding: 10px 15px;
-    font-weight: bold;
-    color: #333;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
+        .modal-content {
+            background-color: #fff;
+            margin: 8% auto;
+            padding: 20px 25px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.3);
+            animation: fadeIn 0.2s ease-out;
+        }
 
-#btn-gps:hover {
-    background-color: #f4f4f4;
-}
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-/* Seção de Geolocalização no Modal de Cadastro */
-.grupo-gps-modal {
-    border: 1px solid #ccc;
-    padding: 10px;
-    margin: 10px 0;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-}
+        .modal-content h3 {
+            margin-bottom: 15px;
+            color: #007bff;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 8px;
+        }
 
-.titulo-gps {
-    font-size: 0.9em;
-    color: #333;
-    display: block;
-    margin-bottom: 5px;
-}
+        .form-group {
+            margin-bottom: 12px;
+        }
 
-.input-coordenada {
-    background-color: #eef2f5 !important;
-    font-family: monospace;
-}
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #495057;
+        }
 
-.btn-gps-capturar {
-    width: 100%;
-    margin-top: 8px;
-    padding: 8px;
-    background-color: #e3f2fd;
-    color: #1565c0;
-    border: 1px solid #90caf9;
-    border-radius: 4px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
 
-.btn-gps-capturar:hover {
-    background-color: #bbdefb;
-}
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
 
-.btn-gps-capturar:active {
-    background-color: #90caf9;
-}
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        /* Responsividade para telas pequenas */
+        @media (max-width: 600px) {
+            .top-bar {
+                top: 10px;
+                width: 92%;
+                border-radius: 15px;
+                padding: 8px;
+            }
+            .btn {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+        }
     </style>
-
-    <script type="module" src="main.js"></script>
 </head>
 <body>
 
-   <!-- Painel de ferramentas -->
-<div id="menu-painel">
-    <strong>Ferramentas</strong>
-    <button id="btn-caixas">📦 Caixas</button>
-    <button id="btn-fibras">🧵 Fibras</button>
-    <div id="status-modo">Modo: Navegação</div>
-    <!-- Adicione onde achar melhor na sua interface/painel -->
-        <button id="btn-concluir-fibra" type="button" style="display: none;">🏁 Concluir Traçado</button>
-        <button id="btn-navegacao" type="button" class="btn-nav">🧭 Iniciar Navegação</button>
-</div>
-
-<!-- Estrutura da Popup / Modal -->
-<div id="modal-caixa" class="modal" style="display: none;">
-    <h3>Cadastrar Elemento de Rede</h3>
-
-    <!-- Seletor do Tipo de Caixa -->
-    <label for="tipo-caixa">Tipo de Caixa:</label>
-    <select id="tipo-caixa">
-        <option value="CTO">CTO (Atendimento)</option>
-        <option value="CEO">CEO (Emenda)</option>
-    </select>
-
-    <!-- Campos Comuns -->
-    <label for="nome-caixa">Identificação / Nome:</label>
-    <input type="text" id="nome-caixa" placeholder="Ex: CTO-01">
-
-    <!-- NOVOS CAMPOS DE GEOLOCALIZAÇÃO -->
-    <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; background-color: #f9f9f9;">
-        <strong style="font-size: 0.9em; color: #333;">Coordenadas GPS:</strong>
-        
-        <label for="caixa-lat" style="margin-top: 5px;">Latitude:</label>
-        <input type="text" id="caixa-lat" placeholder="-3.XXXXXX" readonly style="background-color: #eef2f5;">
-
-        <label for="caixa-lng">Longitude:</label>
-        <input type="text" id="caixa-lng" placeholder="-38.XXXXXX" readonly style="background-color: #eef2f5;">
-
-        <button type="button" id="btn-usar-gps-form" style="width: 100%; margin-top: 8px; padding: 8px; background-color: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; border-radius: 4px; font-weight: bold; cursor: pointer;">
-            📍 Capturar Posição GPS
-        </button>
+    <!-- BARRA DE FERRAMENTAS PRINCIPAL -->
+    <div class="top-bar">
+        <button id="btn-caixas" class="btn">📦 Adicionar Caixa</button>
+        <button id="btn-fibras" class="btn">🧵 Traçar Fibra</button>
+        <button id="btn-concluir-fibra" class="btn btn-ativo" style="display: none; background-color: #28a745;">✅ Finalizar Cabo</button>
+        <button id="btn-gps" class="btn">🎯 Minha Posição</button>
+        <button id="btn-navegacao" class="btn">🧭 Iniciar Navegação</button>
+        <span id="status-modo">Modo: Navegação</span>
     </div>
 
-    <label for="qtd-fibras-entrantes">Qtd. Fibras Entrantes:</label>
-    <input type="number" id="qtd-fibras-entrantes" placeholder="Ex: 2">
+    <!-- MAPA -->
+    <div id="map"></div>
 
-    <!-- Campos Específicos da CTO -->
-    <div id="campos-cto" style="display: block;">
-        <label for="tipo-splitagem">Tipo de Splitagem:</label>
-        <select id="tipo-splitagem">
-            <option value="1:8">1:8</option>
-            <option value="1:16">1:16</option>
-            <option value="Sem Splitter">Sem Splitter</option>
-        </select>
+    <!-- MODAL DE CADASTRO DE CAIXA -->
+    <div id="modal-caixa" class="modal">
+        <div class="modal-content">
+            <h3>Cadastrar Caixa FTTH</h3>
+            
+            <div class="form-group">
+                <label for="tipo-caixa">Tipo de Elemento:</label>
+                <select id="tipo-caixa">
+                    <option value="CTO">CTO (Atendimento)</option>
+                    <option value="CEO">CEO (Emenda)</option>
+                </select>
+            </div>
 
-        <label for="sinal-optico">Sinal Óptico (dBm):</label>
-        <input type="text" id="sinal-optico" placeholder="Ex: -19.5 dBm">
+            <div class="form-group">
+                <label for="nome-caixa">Identificação / Nome:</label>
+                <input type="text" id="nome-caixa" placeholder="Ex: CTO-01">
+            </div>
 
-        <label for="portas-atendimento">Portas de Atendimento:</label>
-        <input type="number" id="portas-atendimento" placeholder="Ex: 16">
+            <!-- Campos específicos CTO -->
+            <div id="campos-cto" class="form-group">
+                <label for="portas-atendimento">Quantidade de Portas:</label>
+                <select id="portas-atendimento">
+                    <option value="8">8 Portas</option>
+                    <option value="16" selected>16 Portas</option>
+                </select>
+            </div>
+
+            <!-- Campos específicos CEO -->
+            <div id="campos-ceo" class="form-group" style="display: none;">
+                <label for="qtd-fusoes">Capacidade de Fusões:</label>
+                <input type="number" id="qtd-fusoes" value="48" placeholder="Ex: 24, 48, 96">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label for="caixa-lat">Latitude:</label>
+                    <input type="text" id="caixa-lat" readonly>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label for="caixa-lng">Longitude:</label>
+                    <input type="text" id="caixa-lng" readonly>
+                </div>
+            </div>
+
+            <button type="button" id="btn-usar-gps-form" class="btn" style="width: 100%; margin-top: 5px; justify-content: center;">
+                📍 Capturar Posição GPS
+            </button>
+
+            <div class="modal-actions">
+                <button id="btn-cancelar" class="btn btn-danger">Cancelar</button>
+                <button id="btn-salvar" class="btn">Salvar Caixa</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Campos Específicos da CEO -->
-    <div id="campos-ceo" style="display: none;">
-        <label for="qtd-fusoes">Qtd. de Fusões Realizadas:</label>
-        <input type="number" id="qtd-fusoes" placeholder="Ex: 12">
+    <!-- MODAL DE CADASTRO DE FIBRA -->
+    <div id="modal-fibra" class="modal">
+        <div class="modal-content">
+            <h3>Cadastrar Cabo de Fibra</h3>
 
-        <label for="detalhe-fusoes">Cores / Detalhes das Fusões:</label>
-        <textarea id="detalhe-fusoes" rows="2" placeholder="Ex: Verde fundida com Azul na Bandeja 1"></textarea>
+            <div class="form-group">
+                <label for="identificacao-cabo">Identificação do Cabo:</label>
+                <input type="text" id="identificacao-cabo" placeholder="Ex: Cabo-AS80-01">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label for="sobra-ponto-a">Sobra Ponto A (m):</label>
+                    <input type="number" id="sobra-ponto-a" value="15" placeholder="Metros">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label for="sobra-ponto-b">Sobra Ponto B (m):</label>
+                    <input type="number" id="sobra-ponto-b" value="15" placeholder="Metros">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button id="btn-cancelar-fibra" class="btn btn-danger">Cancelar</button>
+                <button id="btn-salvar-fibra" class="btn">Salvar Cabo</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Comentários da Fibra (Comum) -->
-    <label for="comentario-fibras">Mapeamento/Observações das Fibras:</label>
-    <textarea id="comentario-fibras" rows="3" placeholder="Ex: Fibra 1 vem da Rua A com sinal principal..."></textarea>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <!-- Botões de Ação -->
-    <div class="modal-acoes">
-        <button id="btn-salvar">Salvar no Mapa</button>
-        <button id="btn-cancelar">Cancelar</button>
-    </div>
-</div>
-
-<div id="map" style="height: 100vh; width: 100%;"></div>
-
-<!-- Modal para Finalizar Traçado da Fibra -->
-<div id="modal-fibra" class="modal" style="display: none;">
-    <h3>Cadastro de Cabo / Fibra</h3>
-
-    <label for="sobra-ponto-a">Sobra Técnica no Ponto A (metros):</label>
-    <input type="number" id="sobra-ponto-a" placeholder="Ex: 15" value="10">
-
-    <label for="sobra-ponto-b">Sobra Técnica no Ponto B (metros):</label>
-    <input type="number" id="sobra-ponto-b" placeholder="Ex: 15" value="10">
-
-    <label for="identificacao-cabo">Identificação do Cabo (Opcional):</label>
-    <input type="text" id="identificacao-cabo" placeholder="Ex: Cabo Drop / Tronco 12FO">
-
-    <div class="modal-acoes">
-        <button id="btn-salvar-fibra">Salvar Cabo</button>
-        <button id="btn-cancelar-fibra">Cancelar</button>
-    </div>
-</div>
-
-<!-- Botão de GPS -->
-<button id="btn-gps" class="btn-controle" title="Minha Localização">
-    🎯 Minha Posição
-</button>
-
+    <!-- Módulo Principal ES6 -->
+    <script type="module" src="./main.js"></script>
 </body>
 </html>
-
 
 

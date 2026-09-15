@@ -2,7 +2,9 @@ import { CTO } from './caixas/CTO.js';
 import { CEO } from './caixas/CEO.js';
 import { MenuManager } from './interface/MenuManager.js';
 
-// 1. Inicializa o Mapa
+// ==========================================
+// 1. INICIALIZAÇÃO DO MAPA E ESTILOS
+// ==========================================
 const mapa = L.map('map', { doubleClickZoom: false }).setView([-3.7319, -38.5267], 14);
 
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -10,7 +12,29 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap'
 }).addTo(mapa);
 
-// 2. Inicializa o Menu e Elementos do DOM
+// Remove fundos padrão para o ícone de seta do Leaflet
+const styleElement = document.createElement('style');
+styleElement.innerHTML = `.custom-arrow-icon { background: transparent !important; border: none !important; }`;
+document.head.appendChild(styleElement);
+
+// Ícone de Setinha estilo Waze
+const iconSetinha = L.divIcon({
+    className: 'custom-arrow-icon',
+    html: `
+        <div id="user-arrow" style="transform: rotate(0deg); transition: transform 0.3s ease-out;">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="11" fill="#007bff" stroke="#ffffff" stroke-width="2"/>
+                <path d="M12 4L17 18L12 15L7 18L12 4Z" fill="#ffffff"/>
+            </svg>
+        </div>
+    `,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+});
+
+// ==========================================
+// 2. ELEMENTOS DO DOM E MENU
+// ==========================================
 const menu = new MenuManager();
 
 const modalCaixa = document.getElementById('modal-caixa');
@@ -31,15 +55,19 @@ const btnGps = document.getElementById('btn-gps');
 const btnGpsModal = document.getElementById('btn-usar-gps-form');
 const btnNavegacao = document.getElementById('btn-navegacao');
 
-// Contadores e Estados Globais
+// ==========================================
+// 3. ESTADOS E BANCO DE DADOS LOCAL
+// ==========================================
 let idContadorCaixa = 1;
 let idContadorFibra = 1;
+
+let caixasSalvas = [];
+let fibrasSalvas = [];
 
 let coordsTempCaixa = null;
 let pontosCaboTemp = [];
 let linhaEmProgresso = null;
 
-// Estados do GPS e Navegação
 let marcadorUsuario = null;
 let circuloPrecisao = null;
 let posicaoGpsAtual = null;
@@ -47,7 +75,60 @@ let posicaoGpsAtual = null;
 let fibraSelecionada = null; 
 let modoNavegacaoAtivo = false;
 
-// Helper para preencher coordenadas no formulário
+// ==========================================
+// 4. PERSISTÊNCIA DE DADOS (LOCALSTORAGE)
+// ==========================================
+function salvarDados() {
+    const estadoGeral = {
+        caixas: caixasSalvas,
+        fibras: fibrasSalvas,
+        idCaixa: idContadorCaixa,
+        idFibra: idContadorFibra
+    };
+    localStorage.setItem('FX_FTTH_DADOS', JSON.stringify(estadoGeral));
+}
+
+function carregarDadosSalvos() {
+    const dados = localStorage.getItem('FX_FTTH_DADOS');
+    if (!dados) return;
+
+    const { caixas, fibras, idCaixa, idFibra } = JSON.parse(dados);
+
+    if (idCaixa) idContadorCaixa = idCaixa;
+    if (idFibra) idContadorFibra = idFibra;
+
+    // Recria as Caixas no mapa
+    if (caixas) {
+        caixas.forEach(c => {
+            let caixaInstancia = c.tipo === 'CTO' 
+                ? new CTO(c.id, c.nome, c.coords, c.capacidadePortas)
+                : new CEO(c.id, c.nome, c.coords, c.quantidadeFusoes);
+
+            caixasSalvas.push(c);
+            const m = L.marker(c.coords).addTo(mapa);
+            m.bindPopup(caixaInstancia.obterInfoPopup());
+        });
+    }
+
+    // Recria as Fibras no mapa
+    if (fibras) {
+        fibras.forEach(f => {
+            fibrasSalvas.push(f);
+            const fibraLayer = L.polyline(f.pontos, { color: 'blue', weight: 4 }).addTo(mapa);
+            
+            fibraLayer.bindPopup(`
+                <b>Identificação:</b> ${f.identificacao}<br>
+                <b>Metragem Total:</b> ${f.metragemTotal}m
+            `);
+
+            fibraLayer.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                selecionarFibraParaNavegar(fibraLayer, f);
+            });
+        });
+    }
+}
+
 function preencherInputsCoordenadas(lat, lng) {
     const inputLat = document.getElementById('caixa-lat');
     const inputLng = document.getElementById('caixa-lng');
@@ -58,7 +139,9 @@ function preencherInputsCoordenadas(lat, lng) {
     }
 }
 
-// 3. Alternância Dinâmica de Campos no Modal de Caixa
+// ==========================================
+// 5. EVENTOS DO MAPA E MODAIS
+// ==========================================
 if (selectTipo) {
     selectTipo.addEventListener('change', () => {
         if (selectTipo.value === 'CTO') {
@@ -71,9 +154,7 @@ if (selectTipo) {
     });
 }
 
-// 4. Captura de Eventos de Clique no Mapa
 mapa.on('click', (e) => {
-    // Ação no Modo CAIXAS
     if (menu.modoAtivo === 'CAIXAS') {
         coordsTempCaixa = e.latlng;
         document.getElementById('nome-caixa').value = `${selectTipo.value}-0${idContadorCaixa}`;
@@ -82,7 +163,6 @@ mapa.on('click', (e) => {
         return;
     }
 
-    // Modo FIBRAS (Desenho Sequencial)
     if (menu.modoAtivo === 'FIBRAS') {
         pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
 
@@ -92,14 +172,12 @@ mapa.on('click', (e) => {
             linhaEmProgresso.setLatLngs(pontosCaboTemp);
         }
 
-        // Exibe o botão de concluir assim que tiver pelo menos 2 pontos
         if (pontosCaboTemp.length >= 2 && btnConcluirFibra) {
             btnConcluirFibra.style.display = 'inline-block';
         }
     }
 });
 
-// 5. Finalização do Traçado da Fibra via BOTÃO (Mobile)
 if (btnConcluirFibra) {
     btnConcluirFibra.addEventListener('click', () => {
         if (pontosCaboTemp.length < 2) {
@@ -112,15 +190,13 @@ if (btnConcluirFibra) {
     });
 }
 
-// Atalho opcional para Desktop (Duplo Clique)
 mapa.on('dblclick', () => {
     if (menu.modoAtivo !== 'FIBRAS' || pontosCaboTemp.length < 2) return;
-
     document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
     modalFibra.style.display = 'block';
 });
 
-// 6. Salvamento da Fibra
+// Salvamento de Fibra
 if (btnSalvarFibra) {
     btnSalvarFibra.addEventListener('click', () => {
         const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
@@ -135,8 +211,6 @@ if (btnSalvarFibra) {
         }
 
         const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
-
-        // Adiciona a linha definitiva da fibra
         const fibraDefinitiva = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
 
         fibraDefinitiva.bindPopup(`
@@ -147,44 +221,38 @@ if (btnSalvarFibra) {
             <b>Metragem Total:</b> ${metragemTotal}m
         `);
 
-        // Clique na fibra seleciona ela para Navegação GPS
+        const dadosFibra = { id: idContadorFibra, identificacao, pontos: [...pontosCaboTemp], metragemTotal };
+        fibrasSalvas.push(dadosFibra);
+
         fibraDefinitiva.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
-            selecionarFibraParaNavegar(fibraDefinitiva, { 
-                identificacao: identificacao,
-                metragemTotal: metragemTotal
-            });
+            selecionarFibraParaNavegar(fibraDefinitiva, dadosFibra);
         });
 
-        if (linhaEmProgresso) {
-            mapa.removeLayer(linhaEmProgresso);
-        }
+        if (linhaEmProgresso) mapa.removeLayer(linhaEmProgresso);
 
         idContadorFibra++;
+        salvarDados();
         fecharModalFibra();
     });
 }
 
 if (btnCancelarFibra) {
     btnCancelarFibra.addEventListener('click', () => {
-        if (linhaEmProgresso) {
-            mapa.removeLayer(linhaEmProgresso);
-        }
+        if (linhaEmProgresso) mapa.removeLayer(linhaEmProgresso);
         fecharModalFibra();
     });
 }
 
 function fecharModalFibra() {
     modalFibra.style.display = 'none';
-    if (btnConcluirFibra) {
-        btnConcluirFibra.style.display = 'none';
-    }
+    if (btnConcluirFibra) btnConcluirFibra.style.display = 'none';
     pontosCaboTemp = [];
     linhaEmProgresso = null;
     menu.limparModo();
 }
 
-// 7. Handlers do Modal de Caixas
+// Salvamento de Caixas
 if (btnCancelarCaixa) btnCancelarCaixa.addEventListener('click', fecharModalCaixa);
 
 function fecharModalCaixa() {
@@ -213,75 +281,52 @@ if (btnSalvarCaixa) {
         const marcador = L.marker(novaCaixa.coords).addTo(mapa);
         marcador.bindPopup(novaCaixa.obterInfoPopup());
 
+        caixasSalvas.push({ ...novaCaixa, tipo });
+        salvarDados();
+
         fecharModalCaixa();
     });
 }
 
 // ==========================================
-// CONTROLE DE LOCALIZAÇÃO VIA GPS (PONTUAL)
+// 6. NAVEGAÇÃO GPS ESTILO WAZE
 // ==========================================
-
-if (btnGps) {
-    btnGps.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        btnGps.innerText = "⏳ Localizando...";
-        mapa.locate({ 
-            setView: true, 
-            maxZoom: 18, 
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        });
-    });
-}
-
-if (btnGpsModal) {
-    btnGpsModal.addEventListener('click', (e) => {
-        e.preventDefault();
-        btnGpsModal.innerText = "⏳ Obtendo posição...";
-        mapa.locate({ 
-            setView: true, 
-            maxZoom: 18, 
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        });
-    });
-}
-
 mapa.on('locationfound', (e) => {
     posicaoGpsAtual = e.latlng;
-    const raio = e.accuracy.toFixed(1);
+    const accuracy = e.accuracy || 10;
+    const heading = e.coords ? e.coords.heading : null;
 
     if (btnGps) btnGps.innerText = "🎯 Minha Posição";
     if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
 
-    if (modoNavegacaoAtivo) {
-        mapa.panTo(e.latlng);
+    // 1. Atualiza a Setinha
+    if (!marcadorUsuario) {
+        marcadorUsuario = L.marker(e.latlng, { icon: iconSetinha }).addTo(mapa);
+    } else {
+        marcadorUsuario.setLatLng(e.latlng);
     }
 
-    if (marcadorUsuario) mapa.removeLayer(marcadorUsuario);
+    // 2. Atualiza o Círculo de precisão
     if (circuloPrecisao) mapa.removeLayer(circuloPrecisao);
-
-    circuloPrecisao = L.circle(e.latlng, e.accuracy, {
+    circuloPrecisao = L.circle(e.latlng, accuracy, {
         color: '#1e88e5',
         fillColor: '#1e88e5',
         fillOpacity: 0.15,
         weight: 1
     }).addTo(mapa);
 
-    marcadorUsuario = L.circleMarker(e.latlng, {
-        radius: 8,
-        fillColor: '#1e88e5',
-        color: '#ffffff',
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.9
-    }).addTo(mapa);
+    // 3. Rotação em Tempo Real (Heading)
+    if (heading !== null && heading !== undefined && !isNaN(heading)) {
+        const arrowElement = document.getElementById('user-arrow');
+        if (arrowElement) {
+            arrowElement.style.transform = `rotate(${heading}deg)`;
+        }
+    }
 
-    marcadorUsuario.bindPopup(`<b>Você está aqui!</b><br>Precisão: ~${raio}m`);
+    // 4. Centralização Automática (Waze View)
+    if (modoNavegacaoAtivo) {
+        mapa.setView(e.latlng, 18, { animate: true });
+    }
 
     if (modalCaixa && modalCaixa.style.display !== 'none') {
         preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
@@ -291,31 +336,38 @@ mapa.on('locationfound', (e) => {
 mapa.on('locationerror', (e) => {
     if (btnGps) btnGps.innerText = "🎯 Minha Posição";
     if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
-    alert("Não foi possível obter sua localização: " + e.message + "\nVerifique se o GPS está ativo.");
+    alert("Erro de GPS: " + e.message);
 });
 
-// ==========================================
-// MÓDULO DE NAVEGAÇÃO GUIADA POR FIBRA VIA GPS
-// ==========================================
+if (btnGps) {
+    btnGps.addEventListener('click', (e) => {
+        e.preventDefault();
+        btnGps.innerText = "⏳ Localizando...";
+        mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    });
+}
+
+if (btnGpsModal) {
+    btnGpsModal.addEventListener('click', (e) => {
+        e.preventDefault();
+        btnGpsModal.innerText = "⏳ Obtendo posição...";
+        mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
+    });
+}
 
 function selecionarFibraParaNavegar(camadaPolyline, dadosFibra) {
     if (fibraSelecionada && fibraSelecionada.layer) {
         fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
     }
 
-    fibraSelecionada = {
-        layer: camadaPolyline,
-        dados: dadosFibra
-    };
-
+    fibraSelecionada = { layer: camadaPolyline, dados: dadosFibra };
     fibraSelecionada.layer.setStyle({ color: '#ff9800', weight: 6 });
-    alert(`Fibra "${dadosFibra?.identificacao || 'Selecionada'}" marcada! Clique em "Iniciar Navegação" para acompanhar no GPS.`);
+    alert(`Fibra "${dadosFibra?.identificacao || 'Selecionada'}" pronta! Clique em "Iniciar Navegação" para acompanhar.`);
 }
 
 if (btnNavegacao) {
     btnNavegacao.addEventListener('click', (e) => {
         e.preventDefault();
-        e.stopPropagation();
 
         if (!fibraSelecionada && !modoNavegacaoAtivo) {
             alert("⚠️ Selecione primeiro qual fibra você deseja acompanhar no mapa!");
@@ -325,7 +377,6 @@ if (btnNavegacao) {
         if (modoNavegacaoAtivo) {
             mapa.stopLocate();
             modoNavegacaoAtivo = false;
-            
             btnNavegacao.innerText = "🧭 Iniciar Navegação";
             btnNavegacao.style.backgroundColor = "";
             btnNavegacao.style.color = "";
@@ -335,7 +386,6 @@ if (btnNavegacao) {
             }
         } else {
             modoNavegacaoAtivo = true;
-            
             btnNavegacao.innerText = "🛑 Parar Navegação";
             btnNavegacao.style.backgroundColor = "#dc3545";
             btnNavegacao.style.color = "#ffffff";
@@ -354,3 +404,6 @@ if (btnNavegacao) {
         }
     });
 }
+
+// Inicializa recuperando os dados gravados
+carregarDadosSalvos();
