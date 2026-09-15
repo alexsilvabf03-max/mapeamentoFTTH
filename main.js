@@ -1,371 +1,241 @@
-import { CTO } from './caixas/CTO.js';
-import { CEO } from './caixas/CEO.js';
+// main.js
 import { MenuManager } from './interface/MenuManager.js';
-
-// ==========================================
-// 1. INICIALIZAÇÃO DO MAPA E ESTILOS
-// ==========================================
-const mapa = L.map('map', { doubleClickZoom: false }).setView([-3.7319, -38.5267], 14);
-
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap'
-}).addTo(mapa);
-
-// Remove fundos padrão para o ícone de seta do Leaflet
-const styleElement = document.createElement('style');
-styleElement.innerHTML = `.custom-arrow-icon { background: transparent !important; border: none !important; }`;
-document.head.appendChild(styleElement);
-
-// Ícone de Setinha estilo Waze
-const iconSetinha = L.divIcon({
-    className: 'custom-arrow-icon',
-    html: `
-        <div id="user-arrow" style="transform: rotate(0deg); transition: transform 0.3s ease-out;">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="11" fill="#007bff" stroke="#ffffff" stroke-width="2"/>
-                <path d="M12 4L17 18L12 15L7 18L12 4Z" fill="#ffffff"/>
-            </svg>
-        </div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18]
-});
-
-// ==========================================
-// 2. ELEMENTOS DO DOM E MENU
-// ==========================================
-const menu = new MenuManager();
-
-const modalCaixa = document.getElementById('modal-caixa');
-const modalFibra = document.getElementById('modal-fibra');
-
-const selectTipo = document.getElementById('tipo-caixa');
-const divCamposCTO = document.getElementById('campos-cto');
-const divCamposCEO = document.getElementById('campos-ceo');
-
-const btnSalvarCaixa = document.getElementById('btn-salvar');
-const btnCancelarCaixa = document.getElementById('btn-cancelar');
-
-const btnConcluirFibra = document.getElementById('btn-concluir-fibra');
-const btnSalvarFibra = document.getElementById('btn-salvar-fibra');
-const btnCancelarFibra = document.getElementById('btn-cancelar-fibra');
-
-const btnGps = document.getElementById('btn-gps');
-const btnGpsModal = document.getElementById('btn-usar-gps-form');
-const btnNavegacao = document.getElementById('btn-navegacao');
-
 import { db, collection, addDoc, onSnapshot } from './firebase-config.js';
 
-// --- SALVAR ELEMENTO (CTO/CEO) NA NUVEM ---
-export async function salvarCaixaNuvem(dadosCaixa) {
-    try {
-        await addDoc(collection(db, "caixas"), dadosCaixa);
-        console.log("Caixa registrada no Firestore!");
-    } catch (erro) {
-        console.error("Erro ao salvar caixa na nuvem:", erro);
-    }
-}
+// 1. INICIALIZAÇÃO DO MAPA LEAFLET
+const map = L.map('map').setView([-3.7319, -38.5267], 14); // Posição padrão
 
-// --- SALVAR CABO DE FIBRA NA NUVEM ---
-export async function salvarFibraNuvem(dadosFibra) {
-    try {
-        await addDoc(collection(db, "fibras"), dadosFibra);
-        console.log("Fibra registrada no Firestore!");
-    } catch (erro) {
-        console.error("Erro ao salvar fibra na nuvem:", erro);
-    }
-}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap - FX Telecom'
+}).addTo(map);
 
-// --- ESCUTA EM TEMPO REAL (Atualiza a tela do celular do técnico sozinho) ---
-export function sincronizarComNuvem(mapa) {
-    // Escuta novas Caixas
+// Instância do Gerenciador de Menu
+const menuManager = new MenuManager();
+
+// VARIABLES DE ESTADO
+let tempCoordsCaixa = null;
+let pontosFibraTemp = [];
+let polylineTemp = null;
+let userMarker = null;
+let watchIdGPS = null;
+
+// ELEMENTOS DO DOM (MODAIS E BOTÕES)
+const modalCaixa = document.getElementById('modal-caixa');
+const modalFibra = document.getElementById('modal-fibra');
+const btnSalvarCaixa = document.getElementById('btn-salvar');
+const btnCancelarCaixa = document.getElementById('btn-cancelar');
+const btnSalvarFibra = document.getElementById('btn-salvar-fibra');
+const btnCancelarFibra = document.getElementById('btn-cancelar-fibra');
+const btnConcluirFibra = document.getElementById('btn-concluir-fibra');
+const btnUsarGpsForm = document.getElementById('btn-usar-gps-form');
+const btnGps = document.getElementById('btn-gps');
+const btnNavegacao = document.getElementById('btn-navegacao');
+
+// ÍCONE DE SETINHA ESTILO WAZE PARA NAVEGAÇÃO
+const iconSetinha = L.divIcon({
+    className: 'custom-arrow-icon',
+    html: `<div id="user-arrow" style="transform: rotate(0deg); transition: transform 0.3s ease;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="#007bff">
+              <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+            </svg>
+           </div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
+});
+
+// 2. SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE (FIRESTORE)
+function escutarDadosNuvem() {
+    // Escuta Caixas
     onSnapshot(collection(db, "caixas"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const c = change.doc.data();
-                const marker = L.marker(c.coords).addTo(mapa);
-                marker.bindPopup(`<b>${c.tipo}:</b> ${c.nome}`);
+                const iconeEmoji = c.tipo === 'CTO' ? '📦' : '⚡';
+                const marker = L.marker([c.lat, c.lng]).addTo(map);
+                
+                let conteudoPopup = `<b>${iconeEmoji} ${c.tipo}: ${c.nome}</b><br>`;
+                if (c.tipo === 'CTO') conteudoPopup += `Portas: ${c.portas}`;
+                if (c.tipo === 'CEO') conteudoPopup += `Fusões: ${c.fusoes}`;
+                
+                marker.bindPopup(conteudoPopup);
             }
         });
     });
 
-    // Escuta novos Traçados de Fibra
+    // Escuta Cabos de Fibra
     onSnapshot(collection(db, "fibras"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const f = change.doc.data();
-                const linha = L.polyline(f.pontos, { color: 'blue', weight: 4 }).addTo(mapa);
-                linha.bindPopup(`<b>Cabo:</b> ${f.identificacao}<br><b>Distância:</b> ${f.metragemTotal}m`);
+                const polyline = L.polyline(f.coords, { color: '#dc3545', weight: 4 }).addTo(map);
+                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA}m | Sobra B: ${f.sobraB}m`);
             }
         });
     });
 }
-// ==========================================
-// 5. EVENTOS DO MAPA E MODAIS
-// ==========================================
-if (selectTipo) {
-    selectTipo.addEventListener('change', () => {
-        if (selectTipo.value === 'CTO') {
-            divCamposCTO.style.display = 'block';
-            divCamposCEO.style.display = 'none';
-        } else {
-            divCamposCTO.style.display = 'none';
-            divCamposCEO.style.display = 'block';
-        }
-    });
-}
+escutarDadosNuvem();
 
-mapa.on('click', (e) => {
-    if (menu.modoAtivo === 'CAIXAS') {
-        coordsTempCaixa = e.latlng;
-        document.getElementById('nome-caixa').value = `${selectTipo.value}-0${idContadorCaixa}`;
+// 3. INTERAÇÕES COM O MAPA (CLIQUE)
+map.on('click', (e) => {
+    const { lat, lng } = e.latlng;
+
+    if (menuManager.modoAtivo === 'CAIXAS') {
+        tempCoordsCaixa = { lat, lng };
+        document.getElementById('caixa-lat').value = lat.toFixed(6);
+        document.getElementById('caixa-lng').value = lng.toFixed(6);
         modalCaixa.style.display = 'block';
-        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
-        return;
-    }
+    } 
+    else if (menuManager.modoAtivo === 'FIBRAS') {
+        pontosFibraTemp.push([lat, lng]);
 
-    if (menu.modoAtivo === 'FIBRAS') {
-        pontosCaboTemp.push([e.latlng.lat, e.latlng.lng]);
-
-        if (!linhaEmProgresso) {
-            linhaEmProgresso = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+        if (!polylineTemp) {
+            polylineTemp = L.polyline(pontosFibraTemp, { color: '#28a745', weight: 4, dashArray: '5, 10' }).addTo(map);
         } else {
-            linhaEmProgresso.setLatLngs(pontosCaboTemp);
+            polylineTemp.setLatLngs(pontosFibraTemp);
         }
 
-        if (pontosCaboTemp.length >= 2 && btnConcluirFibra) {
-            btnConcluirFibra.style.display = 'inline-block';
+        if (pontosFibraTemp.length >= 2) {
+            btnConcluirFibra.style.display = 'inline-flex';
         }
     }
 });
 
-if (btnConcluirFibra) {
-    btnConcluirFibra.addEventListener('click', () => {
-        if (pontosCaboTemp.length < 2) {
-            alert("Desenhe pelo menos 2 pontos no mapa antes de finalizar o cabo.");
-            return;
-        }
+// 4. MMANUSEIO DOS MODAIS E SALVAMENTO NO FIREBASE
+btnSalvarCaixa.addEventListener('click', async () => {
+    const nome = document.getElementById('nome-caixa').value;
+    const tipo = document.getElementById('tipo-caixa').value;
+    const portas = document.getElementById('portas-atendimento').value;
+    const fusoes = document.getElementById('qtd-fusoes').value;
 
-        document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
-        modalFibra.style.display = 'block';
-    });
-}
+    if (!nome) return alert('Insira a identificação da caixa!');
 
-mapa.on('dblclick', () => {
-    if (menu.modoAtivo !== 'FIBRAS' || pontosCaboTemp.length < 2) return;
-    document.getElementById('identificacao-cabo').value = `Cabo-0${idContadorFibra}`;
+    const dadosCaixa = {
+        nome,
+        tipo,
+        portas: tipo === 'CTO' ? portas : null,
+        fusoes: tipo === 'CEO' ? fusoes : null,
+        lat: tempCoordsCaixa.lat,
+        lng: tempCoordsCaixa.lng,
+        criadoEm: new Date().toISOString()
+    };
+
+    try {
+        await addDoc(collection(db, "caixas"), dadosCaixa);
+        modalCaixa.style.display = 'none';
+        document.getElementById('nome-caixa').value = '';
+        menuManager.limparModo();
+    } catch (err) {
+        console.error("Erro ao salvar caixa: ", err);
+        alert("Erro ao salvar caixa no banco!");
+    }
+});
+
+btnCancelarCaixa.addEventListener('click', () => {
+    modalCaixa.style.display = 'none';
+    menuManager.limparModo();
+});
+
+btnConcluirFibra.addEventListener('click', () => {
     modalFibra.style.display = 'block';
 });
 
-// Salvamento de Fibra
-if (btnSalvarFibra) {
-    btnSalvarFibra.addEventListener('click', () => {
-        const sobraA = parseFloat(document.getElementById('sobra-ponto-a').value) || 0;
-        const sobraB = parseFloat(document.getElementById('sobra-ponto-b').value) || 0;
-        const identificacao = document.getElementById('identificacao-cabo').value || `Cabo-0${idContadorFibra}`;
+btnSalvarFibra.addEventListener('click', async () => {
+    const nome = document.getElementById('identificacao-cabo').value;
+    const sobraA = document.getElementById('sobra-ponto-a').value;
+    const sobraB = document.getElementById('sobra-ponto-b').value;
 
-        let distanciaMapa = 0;
-        for (let i = 0; i < pontosCaboTemp.length - 1; i++) {
-            const p1 = L.latLng(pontosCaboTemp[i]);
-            const p2 = L.latLng(pontosCaboTemp[i + 1]);
-            distanciaMapa += p1.distanceTo(p2);
-        }
+    if (!nome) return alert('Insira o nome do cabo!');
 
-        const metragemTotal = (distanciaMapa + sobraA + sobraB).toFixed(2);
-        const fibraDefinitiva = L.polyline(pontosCaboTemp, { color: 'blue', weight: 4 }).addTo(mapa);
+    const dadosFibra = {
+        nome,
+        sobraA: Number(sobraA),
+        sobraB: Number(sobraB),
+        coords: pontosFibraTemp,
+        criadoEm: new Date().toISOString()
+    };
 
-        fibraDefinitiva.bindPopup(`
-            <b>Identificação:</b> ${identificacao}<br>
-            <b>Distância Lançada:</b> ${distanciaMapa.toFixed(2)}m<br>
-            <b>Sobra Ponto A:</b> ${sobraA}m<br>
-            <b>Sobra Ponto B:</b> ${sobraB}m<br>
-            <b>Metragem Total:</b> ${metragemTotal}m
-        `);
+    try {
+        await addDoc(collection(db, "fibras"), dadosFibra);
+        
+        if (polylineTemp) map.removeLayer(polylineTemp);
+        polylineTemp = null;
+        pontosFibraTemp = [];
+        
+        modalFibra.style.display = 'none';
+        btnConcluirFibra.style.display = 'none';
+        menuManager.limparModo();
+    } catch (err) {
+        console.error("Erro ao salvar fibra: ", err);
+        alert("Erro ao salvar cabo no banco!");
+    }
+});
 
-        const dadosFibra = { id: idContadorFibra, identificacao, pontos: [...pontosCaboTemp], metragemTotal };
-        fibrasSalvas.push(dadosFibra);
-
-        fibraDefinitiva.on('click', (e) => {
-            L.DomEvent.stopPropagation(e);
-            selecionarFibraParaNavegar(fibraDefinitiva, dadosFibra);
-        });
-
-        if (linhaEmProgresso) mapa.removeLayer(linhaEmProgresso);
-
-        idContadorFibra++;
-        salvarDados();
-        fecharModalFibra();
-    });
-}
-
-if (btnCancelarFibra) {
-    btnCancelarFibra.addEventListener('click', () => {
-        if (linhaEmProgresso) mapa.removeLayer(linhaEmProgresso);
-        fecharModalFibra();
-    });
-}
-
-function fecharModalFibra() {
+btnCancelarFibra.addEventListener('click', () => {
     modalFibra.style.display = 'none';
-    if (btnConcluirFibra) btnConcluirFibra.style.display = 'none';
-    pontosCaboTemp = [];
-    linhaEmProgresso = null;
-    menu.limparModo();
-}
-
-// Salvamento de Caixas
-if (btnCancelarCaixa) btnCancelarCaixa.addEventListener('click', fecharModalCaixa);
-
-function fecharModalCaixa() {
-    modalCaixa.style.display = 'none';
-    coordsTempCaixa = null;
-    menu.limparModo();
-}
-
-if (btnSalvarCaixa) {
-    btnSalvarCaixa.addEventListener('click', () => {
-        if (!coordsTempCaixa) return;
-
-        const tipo = selectTipo.value;
-        const nome = document.getElementById('nome-caixa').value || "Sem Nome";
-        const coords = [coordsTempCaixa.lat, coordsTempCaixa.lng];
-
-        let novaCaixa;
-        if (tipo === 'CTO') {
-            const portas = parseInt(document.getElementById('portas-atendimento').value, 10) || 16;
-            novaCaixa = new CTO(idContadorCaixa++, nome, coords, portas);
-        } else {
-            const fusoes = parseInt(document.getElementById('qtd-fusoes').value, 10) || 48;
-            novaCaixa = new CEO(idContadorCaixa++, nome, coords, fusoes);
-        }
-
-        const marcador = L.marker(novaCaixa.coords).addTo(mapa);
-        marcador.bindPopup(novaCaixa.obterInfoPopup());
-
-        caixasSalvas.push({ ...novaCaixa, tipo });
-        salvarDados();
-
-        fecharModalCaixa();
-    });
-}
-
-// ==========================================
-// 6. NAVEGAÇÃO GPS ESTILO WAZE
-// ==========================================
-mapa.on('locationfound', (e) => {
-    posicaoGpsAtual = e.latlng;
-    const accuracy = e.accuracy || 10;
-    const heading = e.coords ? e.coords.heading : null;
-
-    if (btnGps) btnGps.innerText = "🎯 Minha Posição";
-    if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
-
-    // 1. Atualiza a Setinha
-    if (!marcadorUsuario) {
-        marcadorUsuario = L.marker(e.latlng, { icon: iconSetinha }).addTo(mapa);
-    } else {
-        marcadorUsuario.setLatLng(e.latlng);
-    }
-
-    // 2. Atualiza o Círculo de precisão
-    if (circuloPrecisao) mapa.removeLayer(circuloPrecisao);
-    circuloPrecisao = L.circle(e.latlng, accuracy, {
-        color: '#1e88e5',
-        fillColor: '#1e88e5',
-        fillOpacity: 0.15,
-        weight: 1
-    }).addTo(mapa);
-
-    // 3. Rotação em Tempo Real (Heading)
-    if (heading !== null && heading !== undefined && !isNaN(heading)) {
-        const arrowElement = document.getElementById('user-arrow');
-        if (arrowElement) {
-            arrowElement.style.transform = `rotate(${heading}deg)`;
-        }
-    }
-
-    // 4. Centralização Automática (Waze View)
-    if (modoNavegacaoAtivo) {
-        mapa.setView(e.latlng, 18, { animate: true });
-    }
-
-    if (modalCaixa && modalCaixa.style.display !== 'none') {
-        preencherInputsCoordenadas(e.latlng.lat, e.latlng.lng);
-    }
+    if (polylineTemp) map.removeLayer(polylineTemp);
+    polylineTemp = null;
+    pontosFibraTemp = [];
+    btnConcluirFibra.style.display = 'none';
+    menuManager.limparModo();
 });
 
-mapa.on('locationerror', (e) => {
-    if (btnGps) btnGps.innerText = "🎯 Minha Posição";
-    if (btnGpsModal) btnGpsModal.innerText = "📍 Capturar Posição GPS";
-    alert("Erro de GPS: " + e.message);
-});
-
-if (btnGps) {
-    btnGps.addEventListener('click', (e) => {
-        e.preventDefault();
-        btnGps.innerText = "⏳ Localizando...";
-        mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
-    });
-}
-
-if (btnGpsModal) {
-    btnGpsModal.addEventListener('click', (e) => {
-        e.preventDefault();
-        btnGpsModal.innerText = "⏳ Obtendo posição...";
-        mapa.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
-    });
-}
-
-function selecionarFibraParaNavegar(camadaPolyline, dadosFibra) {
-    if (fibraSelecionada && fibraSelecionada.layer) {
-        fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
+// 5. NAVEGAÇÃO ESTILO WAZE COM GPS
+function ativarNavegacaoGPS() {
+    if (!navigator.geolocation) {
+        return alert("Seu dispositivo não suporta geolocalização.");
     }
 
-    fibraSelecionada = { layer: camadaPolyline, dados: dadosFibra };
-    fibraSelecionada.layer.setStyle({ color: '#ff9800', weight: 6 });
-    alert(`Fibra "${dadosFibra?.identificacao || 'Selecionada'}" pronta! Clique em "Iniciar Navegação" para acompanhar.`);
-}
+    if (watchIdGPS !== null) {
+        navigator.geolocation.clearWatch(watchIdGPS);
+        watchIdGPS = null;
+        btnNavegacao.classList.remove('ativo');
+        btnNavegacao.innerText = "🧭 Iniciar Navegação";
+        return;
+    }
 
-if (btnNavegacao) {
-    btnNavegacao.addEventListener('click', (e) => {
-        e.preventDefault();
+    btnNavegacao.classList.add('ativo');
+    btnNavegacao.innerText = "🛑 Parar Navegação";
 
-        if (!fibraSelecionada && !modoNavegacaoAtivo) {
-            alert("⚠️ Selecione primeiro qual fibra você deseja acompanhar no mapa!");
-            return;
-        }
+    watchIdGPS = navigator.geolocation.watchPosition((pos) => {
+        const { latitude, longitude, heading } = pos.coords;
+        const currentLatLng = [latitude, longitude];
 
-        if (modoNavegacaoAtivo) {
-            mapa.stopLocate();
-            modoNavegacaoAtivo = false;
-            btnNavegacao.innerText = "🧭 Iniciar Navegação";
-            btnNavegacao.style.backgroundColor = "";
-            btnNavegacao.style.color = "";
-
-            if (fibraSelecionada && fibraSelecionada.layer) {
-                fibraSelecionada.layer.setStyle({ color: 'blue', weight: 4 });
-            }
+        if (!userMarker) {
+            userMarker = L.marker(currentLatLng, { icon: iconSetinha }).addTo(map);
         } else {
-            modoNavegacaoAtivo = true;
-            btnNavegacao.innerText = "🛑 Parar Navegação";
-            btnNavegacao.style.backgroundColor = "#dc3545";
-            btnNavegacao.style.color = "#ffffff";
-
-            if (fibraSelecionada && fibraSelecionada.layer) {
-                mapa.fitBounds(fibraSelecionada.layer.getBounds(), { padding: [50, 50] });
-            }
-
-            mapa.locate({ 
-                setView: true, 
-                maxZoom: 19, 
-                watch: true, 
-                enableHighAccuracy: true,
-                maximumAge: 1000 
-            });
+            userMarker.setLatLng(currentLatLng);
         }
+
+        map.setView(currentLatLng, 18, { animate: true });
+
+        if (heading !== null && heading !== undefined) {
+            const arrowEl = document.getElementById('user-arrow');
+            if (arrowEl) arrowEl.style.transform = `rotate(${heading}deg)`;
+        }
+    }, (err) => {
+        console.error("Erro de GPS:", err);
+    }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000
     });
 }
 
-// Inicializa recuperando os dados gravados
-carregarDadosSalvos();
+btnNavegacao.addEventListener('click', ativarNavegacaoGPS);
+
+btnGps.addEventListener('click', () => {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        map.setView([latitude, longitude], 17);
+    });
+});
+
+btnUsarGpsForm.addEventListener('click', () => {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        tempCoordsCaixa = { lat: latitude, lng: longitude };
+        document.getElementById('caixa-lat').value = latitude.toFixed(6);
+        document.getElementById('caixa-lng').value = longitude.toFixed(6);
+    });
+});

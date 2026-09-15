@@ -1,84 +1,76 @@
+// interface/MenuManager.js
+
 export class MenuManager {
     constructor() {
-        // Estado atual do mapa: 'NAVEGACAO' | 'CAIXAS' | 'FIBRAS'
-        this.modoAtivo = 'NAVEGACAO';
-
-        // Referências dos Elementos da Interface
+        // Elementos da interface
         this.btnCaixas = document.getElementById('btn-caixas');
         this.btnFibras = document.getElementById('btn-fibras');
-        this.btnNavegacao = document.getElementById('btn-navegacao');
-        this.statusTexto = document.getElementById('status-modo');
+        this.btnConcluirFibra = document.getElementById('btn-concluir-fibra');
+        this.statusModo = document.getElementById('status-modo');
 
-        this.init();
+        // Estado do modo ativo: 'NAVEGACAO' | 'CAIXAS' | 'FIBRAS'
+        this.modoAtivo = 'NAVEGACAO';
+
+        this.inicializarEventos();
     }
 
-    init() {
-        // Eventos dos botões do Menu
+    inicializarEventos() {
         if (this.btnCaixas) {
-            this.btnCaixas.addEventListener('click', () => this.definirModo('CAIXAS'));
+            this.btnCaixas.addEventListener('click', () => {
+                if (this.modoAtivo === 'CAIXAS') {
+                    this.setModo('NAVEGACAO');
+                } else {
+                    this.setModo('CAIXAS');
+                }
+            });
         }
 
         if (this.btnFibras) {
-            this.btnFibras.addEventListener('click', () => this.definirModo('FIBRAS'));
+            this.btnFibras.addEventListener('click', () => {
+                if (this.modoAtivo === 'FIBRAS') {
+                    this.setModo('NAVEGACAO');
+                } else {
+                    this.setModo('FIBRAS');
+                }
+            });
         }
-
-        // Atualiza a interface para o estado inicial
-        this.atualizarUI();
     }
 
-    /**
-     * Define o modo de operação atual do aplicativo
-     * @param {string} novoModo - 'CAIXAS', 'FIBRAS' ou 'NAVEGACAO'
-     */
-    definirModo(novoModo) {
-        // Se clicar no botão do modo que já está ativo, volta para NAVEGACAO
-        if (this.modoAtivo === novoModo) {
-            this.modoAtivo = 'NAVEGACAO';
-        } else {
-            this.modoAtivo = novoModo;
-        }
-
-        this.atualizarUI();
+    setModo(novoModo) {
+        this.modoAtivo = novoModo;
+        this.atualizarInterface();
     }
 
-    /**
-     * Reseta o estado para o modo padrão (Navegação/Visualização)
-     */
     limparModo() {
-        this.modoAtivo = 'NAVEGACAO';
-        this.atualizarUI();
+        this.setModo('NAVEGACAO');
     }
 
-    /**
-     * Atualiza o estado visual dos botões e o texto indicativo na tela
-     */
-    atualizarUI() {
-        // Reseta classes ativas
+    atualizarInterface() {
+        // Reseta estados visuais dos botões
         if (this.btnCaixas) this.btnCaixas.classList.remove('ativo');
         if (this.btnFibras) this.btnFibras.classList.remove('ativo');
+
+        // Oculta o botão de concluir fibra por padrão se sair do modo Fibras
+        if (this.modoAtivo !== 'FIBRAS' && this.btnConcluirFibra) {
+            this.btnConcluirFibra.style.display = 'none';
+        }
 
         // Atualiza conforme o modo atual
         switch (this.modoAtivo) {
             case 'CAIXAS':
                 if (this.btnCaixas) this.btnCaixas.classList.add('ativo');
-                this._setMensagemStatus("Modo: Adicionando Caixa (Clique no mapa)");
+                if (this.statusModo) this.statusModo.innerText = 'Modo: Adicionar Caixa (Clique no Mapa)';
                 break;
 
             case 'FIBRAS':
                 if (this.btnFibras) this.btnFibras.classList.add('ativo');
-                this._setMensagemStatus("Modo: Traçando Fibra (Marque os pontos)");
+                if (this.statusModo) this.statusModo.innerText = 'Modo: Traçar Fibra (Clique para conectar)';
                 break;
 
             case 'NAVEGACAO':
             default:
-                this._setMensagemStatus("Modo: Navegação / Seleção");
+                if (this.statusModo) this.statusModo.innerText = 'Modo: Navegação';
                 break;
-        }
-    }
-
-    _setMensagemStatus(texto) {
-        if (this.statusTexto) {
-            this.statusTexto.innerText = texto;
         }
     }
 }
