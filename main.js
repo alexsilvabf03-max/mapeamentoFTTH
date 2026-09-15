@@ -55,90 +55,52 @@ const btnGps = document.getElementById('btn-gps');
 const btnGpsModal = document.getElementById('btn-usar-gps-form');
 const btnNavegacao = document.getElementById('btn-navegacao');
 
-// ==========================================
-// 3. ESTADOS E BANCO DE DADOS LOCAL
-// ==========================================
-let idContadorCaixa = 1;
-let idContadorFibra = 1;
+import { db, collection, addDoc, onSnapshot } from './firebase-config.js';
 
-let caixasSalvas = [];
-let fibrasSalvas = [];
-
-let coordsTempCaixa = null;
-let pontosCaboTemp = [];
-let linhaEmProgresso = null;
-
-let marcadorUsuario = null;
-let circuloPrecisao = null;
-let posicaoGpsAtual = null;
-
-let fibraSelecionada = null; 
-let modoNavegacaoAtivo = false;
-
-// ==========================================
-// 4. PERSISTÊNCIA DE DADOS (LOCALSTORAGE)
-// ==========================================
-function salvarDados() {
-    const estadoGeral = {
-        caixas: caixasSalvas,
-        fibras: fibrasSalvas,
-        idCaixa: idContadorCaixa,
-        idFibra: idContadorFibra
-    };
-    localStorage.setItem('FX_FTTH_DADOS', JSON.stringify(estadoGeral));
+// --- SALVAR ELEMENTO (CTO/CEO) NA NUVEM ---
+export async function salvarCaixaNuvem(dadosCaixa) {
+    try {
+        await addDoc(collection(db, "caixas"), dadosCaixa);
+        console.log("Caixa registrada no Firestore!");
+    } catch (erro) {
+        console.error("Erro ao salvar caixa na nuvem:", erro);
+    }
 }
 
-function carregarDadosSalvos() {
-    const dados = localStorage.getItem('FX_FTTH_DADOS');
-    if (!dados) return;
+// --- SALVAR CABO DE FIBRA NA NUVEM ---
+export async function salvarFibraNuvem(dadosFibra) {
+    try {
+        await addDoc(collection(db, "fibras"), dadosFibra);
+        console.log("Fibra registrada no Firestore!");
+    } catch (erro) {
+        console.error("Erro ao salvar fibra na nuvem:", erro);
+    }
+}
 
-    const { caixas, fibras, idCaixa, idFibra } = JSON.parse(dados);
-
-    if (idCaixa) idContadorCaixa = idCaixa;
-    if (idFibra) idContadorFibra = idFibra;
-
-    // Recria as Caixas no mapa
-    if (caixas) {
-        caixas.forEach(c => {
-            let caixaInstancia = c.tipo === 'CTO' 
-                ? new CTO(c.id, c.nome, c.coords, c.capacidadePortas)
-                : new CEO(c.id, c.nome, c.coords, c.quantidadeFusoes);
-
-            caixasSalvas.push(c);
-            const m = L.marker(c.coords).addTo(mapa);
-            m.bindPopup(caixaInstancia.obterInfoPopup());
+// --- ESCUTA EM TEMPO REAL (Atualiza a tela do celular do técnico sozinho) ---
+export function sincronizarComNuvem(mapa) {
+    // Escuta novas Caixas
+    onSnapshot(collection(db, "caixas"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const c = change.doc.data();
+                const marker = L.marker(c.coords).addTo(mapa);
+                marker.bindPopup(`<b>${c.tipo}:</b> ${c.nome}`);
+            }
         });
-    }
+    });
 
-    // Recria as Fibras no mapa
-    if (fibras) {
-        fibras.forEach(f => {
-            fibrasSalvas.push(f);
-            const fibraLayer = L.polyline(f.pontos, { color: 'blue', weight: 4 }).addTo(mapa);
-            
-            fibraLayer.bindPopup(`
-                <b>Identificação:</b> ${f.identificacao}<br>
-                <b>Metragem Total:</b> ${f.metragemTotal}m
-            `);
-
-            fibraLayer.on('click', (e) => {
-                L.DomEvent.stopPropagation(e);
-                selecionarFibraParaNavegar(fibraLayer, f);
-            });
+    // Escuta novos Traçados de Fibra
+    onSnapshot(collection(db, "fibras"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const f = change.doc.data();
+                const linha = L.polyline(f.pontos, { color: 'blue', weight: 4 }).addTo(mapa);
+                linha.bindPopup(`<b>Cabo:</b> ${f.identificacao}<br><b>Distância:</b> ${f.metragemTotal}m`);
+            }
         });
-    }
+    });
 }
-
-function preencherInputsCoordenadas(lat, lng) {
-    const inputLat = document.getElementById('caixa-lat');
-    const inputLng = document.getElementById('caixa-lng');
-
-    if (inputLat && inputLng) {
-        inputLat.value = lat.toFixed(6);
-        inputLng.value = lng.toFixed(6);
-    }
-}
-
 // ==========================================
 // 5. EVENTOS DO MAPA E MODAIS
 // ==========================================
