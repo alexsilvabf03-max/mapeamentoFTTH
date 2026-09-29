@@ -87,20 +87,21 @@ function escutarDadosNuvem() {
         });
     });
 
-   // ESCUTA EM TEMPO REAL DAS FIBRAS
-onSnapshot(collection(db, "fibras"), (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-            const f = change.doc.data();
+    // ESCUTA EM TEMPO REAL DAS FIBRAS
+    onSnapshot(collection(db, "fibras"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const f = change.doc.data();
 
-            // Trata as coordenadas para o Leaflet desenhar [lat, lng]
-            const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
+                // Trata as coordenadas para o Leaflet desenhar [lat, lng]
+                const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
 
-            const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
-            polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA}m | Sobra B: ${f.sobraB}m`);
-        }
+                const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
+                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA || 0}m | Sobra B: ${f.sobraB || 0}m`);
+            }
+        });
     });
-});}
+}
 escutarDadosNuvem();
 
 // 3. CLIQUE NO MAPA
@@ -128,7 +129,20 @@ map.on('click', (e) => {
     }
 });
 
-// 4. SALVAMENTO E MODAIS
+// 4. AÇÃO DO BOTÃO "FINALIZAR CABO" (ABRE O MODAL)
+btnConcluirFibra.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (pontosFibraTemp.length < 2) {
+        alert('Selecione pelo menos 2 pontos no mapa para formar um cabo!');
+        return;
+    }
+
+    modalFibra.style.display = 'block';
+});
+
+// 5. SALVAMENTO E MODAIS DE CAIXA E FIBRA
 btnSalvarCaixa.addEventListener('click', async () => {
     const nome = document.getElementById('nome-caixa').value;
     const tipo = document.getElementById('tipo-caixa').value;
@@ -163,7 +177,7 @@ btnCancelarCaixa.addEventListener('click', () => {
     menuManager.limparModo();
 });
 
-// EVENTO DE SALVAR FIBRA AJUSTADO
+// EVENTO DE SALVAR FIBRA
 btnSalvarFibra.addEventListener('click', async () => {
     const nome = document.getElementById('identificacao-cabo').value;
     const sobraA = Number(document.getElementById('sobra-ponto-a').value || 0);
@@ -193,6 +207,10 @@ btnSalvarFibra.addEventListener('click', async () => {
         polylineTemp = null;
         pontosFibraTemp = [];
         
+        document.getElementById('identificacao-cabo').value = '';
+        document.getElementById('sobra-ponto-a').value = '';
+        document.getElementById('sobra-ponto-b').value = '';
+
         modalFibra.style.display = 'none';
         btnConcluirFibra.style.display = 'none';
         menuManager.limparModo();
@@ -202,7 +220,17 @@ btnSalvarFibra.addEventListener('click', async () => {
         alert("Erro ao salvar cabo: " + err.message);
     }
 });
-// 5. NAVEGAÇÃO GPS
+
+btnCancelarFibra.addEventListener('click', () => {
+    modalFibra.style.display = 'none';
+    if (polylineTemp) map.removeLayer(polylineTemp);
+    polylineTemp = null;
+    pontosFibraTemp = [];
+    btnConcluirFibra.style.display = 'none';
+    menuManager.limparModo();
+});
+
+// 6. NAVEGAÇÃO GPS
 function ativarNavegacaoGPS() {
     if (!navigator.geolocation) {
         return alert("Seu dispositivo não suporta geolocalização.");
