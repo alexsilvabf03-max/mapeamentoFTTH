@@ -87,16 +87,20 @@ function escutarDadosNuvem() {
         });
     });
 
-    onSnapshot(collection(db, "fibras"), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const f = change.doc.data();
-                const polyline = L.polyline(f.coords, { color: '#dc3545', weight: 4 }).addTo(map);
-                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Lançamento: ${f.metragemLançada || 0}m<br>Total (+ Sobras): ${f.metragemTotal || 0}m`);
-            }
-        });
+   // ESCUTA EM TEMPO REAL DAS FIBRAS
+onSnapshot(collection(db, "fibras"), (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+            const f = change.doc.data();
+
+            // Trata as coordenadas para o Leaflet desenhar [lat, lng]
+            const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
+
+            const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
+            polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA}m | Sobra B: ${f.sobraB}m`);
+        }
     });
-}
+});}
 escutarDadosNuvem();
 
 // 3. CLIQUE NO MAPA
@@ -159,27 +163,26 @@ btnCancelarCaixa.addEventListener('click', () => {
     menuManager.limparModo();
 });
 
-btnConcluirFibra.addEventListener('click', () => {
-    modalFibra.style.display = 'block';
-});
-
+// EVENTO DE SALVAR FIBRA AJUSTADO
 btnSalvarFibra.addEventListener('click', async () => {
     const nome = document.getElementById('identificacao-cabo').value;
     const sobraA = Number(document.getElementById('sobra-ponto-a').value || 0);
     const sobraB = Number(document.getElementById('sobra-ponto-b').value || 0);
 
     if (!nome) return alert('Insira o nome do cabo!');
+    if (pontosFibraTemp.length < 2) return alert('Selecione pelo menos 2 pontos no mapa!');
 
-    const metragemLancada = calcularMetragemCabo(pontosFibraTemp);
-    const metragemTotal = metragemLancada + sobraA + sobraB;
+    // Converte [[lat, lng], ...] para [{ lat, lng }, ...] (Compatível com Firestore)
+    const coordsLimpas = pontosFibraTemp.map(pt => ({
+        lat: pt[0],
+        lng: pt[1]
+    }));
 
     const dadosFibra = {
         nome,
         sobraA,
         sobraB,
-        metragemLançada: metragemLancada,
-        metragemTotal: metragemTotal,
-        coords: pontosFibraTemp,
+        coords: coordsLimpas,
         criadoEm: new Date().toISOString()
     };
 
@@ -193,21 +196,12 @@ btnSalvarFibra.addEventListener('click', async () => {
         modalFibra.style.display = 'none';
         btnConcluirFibra.style.display = 'none';
         menuManager.limparModo();
+        alert('Cabo salvo com sucesso!');
     } catch (err) {
-        console.error("Erro ao salvar fibra: ", err);
-        alert("Erro ao salvar cabo no banco!");
+        console.error("Erro detalhado do Firebase:", err);
+        alert("Erro ao salvar cabo: " + err.message);
     }
 });
-
-btnCancelarFibra.addEventListener('click', () => {
-    modalFibra.style.display = 'none';
-    if (polylineTemp) map.removeLayer(polylineTemp);
-    polylineTemp = null;
-    pontosFibraTemp = [];
-    btnConcluirFibra.style.display = 'none';
-    menuManager.limparModo();
-});
-
 // 5. NAVEGAÇÃO GPS
 function ativarNavegacaoGPS() {
     if (!navigator.geolocation) {
