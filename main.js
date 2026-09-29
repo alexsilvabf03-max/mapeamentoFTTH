@@ -3,26 +3,29 @@ import { MenuManager } from './interface/MenuManager.js';
 import { db, collection, addDoc, onSnapshot } from './firebase-config.js';
 
 // 1. INICIALIZAÇÃO DO MAPA LEAFLET
-const map = L.map('map').setView([-3.7319, -38.5267], 14); // Posição padrão
+const map = L.map('map').setView([-3.7319, -38.5267], 14);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '© OpenStreetMap - FX Telecom'
 }).addTo(map);
 
-// Instância do Gerenciador de Menu
 const menuManager = new MenuManager();
 
-// VARIABLES DE ESTADO
+// VARIÁVEIS DE ESTADO
 let tempCoordsCaixa = null;
 let pontosFibraTemp = [];
 let polylineTemp = null;
 let userMarker = null;
 let watchIdGPS = null;
 
-// ELEMENTOS DO DOM (MODAIS E BOTÕES)
+// ELEMENTOS DO DOM
 const modalCaixa = document.getElementById('modal-caixa');
 const modalFibra = document.getElementById('modal-fibra');
+const selectTipoCaixa = document.getElementById('tipo-caixa');
+const camposCto = document.getElementById('campos-cto');
+const camposCeo = document.getElementById('campos-ceo');
+
 const btnSalvarCaixa = document.getElementById('btn-salvar');
 const btnCancelarCaixa = document.getElementById('btn-cancelar');
 const btnSalvarFibra = document.getElementById('btn-salvar-fibra');
@@ -32,7 +35,18 @@ const btnUsarGpsForm = document.getElementById('btn-usar-gps-form');
 const btnGps = document.getElementById('btn-gps');
 const btnNavegacao = document.getElementById('btn-navegacao');
 
-// ÍCONE DE SETINHA ESTILO WAZE PARA NAVEGAÇÃO
+// ALTERNÂNCIA CTO / CEO NO MODAL
+selectTipoCaixa.addEventListener('change', (e) => {
+    if (e.target.value === 'CTO') {
+        camposCto.style.display = 'block';
+        camposCeo.style.display = 'none';
+    } else {
+        camposCto.style.display = 'none';
+        camposCeo.style.display = 'block';
+    }
+});
+
+// ÍCONE DE NAVEGAÇÃO GPS
 const iconSetinha = L.divIcon({
     className: 'custom-arrow-icon',
     html: `<div id="user-arrow" style="transform: rotate(0deg); transition: transform 0.3s ease;">
@@ -44,9 +58,19 @@ const iconSetinha = L.divIcon({
     iconAnchor: [16, 16]
 });
 
-// 2. SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE (FIRESTORE)
+// FUNÇÃO AUXILIAR PARA CÁLCULO DE METRAGEM TOTAL DA FIBRA
+function calcularMetragemCabo(coords) {
+    let metrosTotais = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+        const p1 = L.latLng(coords[i][0], coords[i][1]);
+        const p2 = L.latLng(coords[i + 1][0], coords[i + 1][1]);
+        metrosTotais += p1.distanceTo(p2);
+    }
+    return Math.round(metrosTotais);
+}
+
+// 2. SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
 function escutarDadosNuvem() {
-    // Escuta Caixas
     onSnapshot(collection(db, "caixas"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
@@ -63,20 +87,19 @@ function escutarDadosNuvem() {
         });
     });
 
-    // Escuta Cabos de Fibra
     onSnapshot(collection(db, "fibras"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const f = change.doc.data();
                 const polyline = L.polyline(f.coords, { color: '#dc3545', weight: 4 }).addTo(map);
-                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA}m | Sobra B: ${f.sobraB}m`);
+                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Lançamento: ${f.metragemLançada || 0}m<br>Total (+ Sobras): ${f.metragemTotal || 0}m`);
             }
         });
     });
 }
 escutarDadosNuvem();
 
-// 3. INTERAÇÕES COM O MAPA (CLIQUE)
+// 3. CLIQUE NO MAPA
 map.on('click', (e) => {
     const { lat, lng } = e.latlng;
 
@@ -101,7 +124,7 @@ map.on('click', (e) => {
     }
 });
 
-// 4. MMANUSEIO DOS MODAIS E SALVAMENTO NO FIREBASE
+// 4. SALVAMENTO E MODAIS
 btnSalvarCaixa.addEventListener('click', async () => {
     const nome = document.getElementById('nome-caixa').value;
     const tipo = document.getElementById('tipo-caixa').value;
@@ -142,15 +165,20 @@ btnConcluirFibra.addEventListener('click', () => {
 
 btnSalvarFibra.addEventListener('click', async () => {
     const nome = document.getElementById('identificacao-cabo').value;
-    const sobraA = document.getElementById('sobra-ponto-a').value;
-    const sobraB = document.getElementById('sobra-ponto-b').value;
+    const sobraA = Number(document.getElementById('sobra-ponto-a').value || 0);
+    const sobraB = Number(document.getElementById('sobra-ponto-b').value || 0);
 
     if (!nome) return alert('Insira o nome do cabo!');
 
+    const metragemLancada = calcularMetragemCabo(pontosFibraTemp);
+    const metragemTotal = metragemLancada + sobraA + sobraB;
+
     const dadosFibra = {
         nome,
-        sobraA: Number(sobraA),
-        sobraB: Number(sobraB),
+        sobraA,
+        sobraB,
+        metragemLançada: metragemLancada,
+        metragemTotal: metragemTotal,
         coords: pontosFibraTemp,
         criadoEm: new Date().toISOString()
     };
@@ -180,7 +208,7 @@ btnCancelarFibra.addEventListener('click', () => {
     menuManager.limparModo();
 });
 
-// 5. NAVEGAÇÃO ESTILO WAZE COM GPS
+// 5. NAVEGAÇÃO GPS
 function ativarNavegacaoGPS() {
     if (!navigator.geolocation) {
         return alert("Seu dispositivo não suporta geolocalização.");
@@ -209,7 +237,7 @@ function ativarNavegacaoGPS() {
 
         map.setView(currentLatLng, 18, { animate: true });
 
-        if (heading !== null && heading !== undefined) {
+        if (heading !== null && heading !== undefined && !isNaN(heading)) {
             const arrowEl = document.getElementById('user-arrow');
             if (arrowEl) arrowEl.style.transform = `rotate(${heading}deg)`;
         }
