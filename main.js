@@ -2,6 +2,15 @@
 import { MenuManager } from './interface/MenuManager.js';
 import { db, collection, addDoc, onSnapshot, doc, deleteDoc } from './firebase-config.js';
 
+const camadasMapa = {};
+
+function santatizar(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+    });
+}
+
 // 1. INICIALIZAÇÃO DO MAPA LEAFLET
 const map = L.map('map').setView([-3.7319, -38.5267], 14);
 
@@ -71,48 +80,71 @@ function calcularMetragemCabo(coords) {
 
 // 2. SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
 function escutarDadosNuvem() {
-   onSnapshot(collection(db, "caixas"), (snapshot) => {
+onSnapshot(collection(db, "caixas"), (snapshot) => {
     snapshot.docChanges().forEach((change) => {
+        const id = change.doc.id;
+        const c = change.doc.data();
+
+        // 🟢 QUANDO ADICIONADO OU CARREGADO DO BANCO (F5)
         if (change.type === "added") {
-            const id = change.doc.id; // 📍 ID do documento no Firestore
-            const c = change.doc.data();
+            const lat = Number(c.lat);
+            const lng = Number(c.lng);
+
+            if (isNaN(lat) || isNaN(lng)) return;
+
             const iconeEmoji = c.tipo === 'CTO' ? '📦' : '⚡';
-            const marker = L.marker([c.lat, c.lng]).addTo(map);
+            const marker = L.marker([lat, lng]).addTo(map);
 
-            marker.firestoreId = id; // 📍 Guarda a referência no Marker
+            let conteudoPopup = `<b>${iconeEmoji} ${santatizar(c.tipo)}: ${santatizar(c.nome)}</b><br>`;
+            if (c.tipo === 'CTO') conteudoPopup += `Portas: ${santatizar(c.portas)}<br>`;
+            if (c.tipo === 'CEO') conteudoPopup += `Fusões: ${santatizar(c.fusoes)}<br>`;
 
-            let conteudoPopup = `<b>${iconeEmoji} ${c.tipo}: ${c.nome}</b><br>`;
-            if (c.tipo === 'CTO') conteudoPopup += `Portas: ${c.portas}<br>`;
-            if (c.tipo === 'CEO') conteudoPopup += `Fusões: ${c.fusoes}<br>`;
-
-            // 📍 Botão de Excluir
             conteudoPopup += `
                 <div style="margin-top: 8px; text-align: center;">
                     <button onclick="deletarElemento('caixas', '${id}')"
                             style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold;">
-                        🗑️ Excluir ${c.tipo}
+                        🗑️ Excluir ${santatizar(c.tipo)}
                     </button>
                 </div>
             `;
 
             marker.bindPopup(conteudoPopup);
+            camadasMapa[id] = marker; // Salva a referência da camada
+        }
+
+        // 🔴 QUANDO REMOVIDO DO FIRESTORE (Apaga do mapa automaticamente)
+        if (change.type === "removed") {
+            if (camadasMapa[id]) {
+                map.removeLayer(camadasMapa[id]);
+                delete camadasMapa[id];
+            }
         }
     });
 });
-
-    // ESCUTA EM TEMPO REAL DAS FIBRAS
-   onSnapshot(collection(db, "fibras"), (snapshot) => {
+  // ESCUTA EM TEMPO REAL - FIBRAS (CABOS)
+onSnapshot(collection(db, "fibras"), (snapshot) => {
     snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-            const id = change.doc.id; // 📍 ID do documento no Firestore
-            const f = change.doc.data();
+        const id = change.doc.id;
+        const f = change.doc.data();
 
-            const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
+        // 🟢 QUANDO ADICIONADO OU CARREGADO DO BANCO (F5)
+        if (change.type === "added") {
+            if (!f.coords || !Array.isArray(f.coords)) return;
+
+            // Tratamento robusto para converter coordenadas salvas como objeto ou array
+            const latLngs = f.coords.map(coord => {
+                if (Array.isArray(coord)) return coord;
+                if (coord && typeof coord.lat === 'number' && typeof coord.lng === 'number') {
+                    return [coord.lat, coord.lng];
+                }
+                return null;
+            }).filter(coord => coord !== null);
+
+            if (latLngs.length < 2) return;
+
             const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
 
-            polyline.firestoreId = id; // 📍 Guarda a referência na Polyline
-
-            let conteudoPopup = `<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA || 0}m | Sobra B: ${f.sobraB || 0}m<br>`;
+            let conteudoPopup = `<b>🧵 Cabo: ${santatizar(f.nome)}</b><br>Sobra A: ${santatizar(f.sobraA) || 0}m | Sobra B: ${santatizar(f.sobraB) || 0}m<br>`;
             conteudoPopup += `
                 <div style="margin-top: 8px; text-align: center;">
                     <button onclick="deletarElemento('fibras', '${id}')"
@@ -123,6 +155,15 @@ function escutarDadosNuvem() {
             `;
 
             polyline.bindPopup(conteudoPopup);
+            camadasMapa[id] = polyline; // Salva a referência da camada
+        }
+
+        // 🔴 QUANDO REMOVIDO DO FIRESTORE
+        if (change.type === "removed") {
+            if (camadasMapa[id]) {
+                map.removeLayer(camadasMapa[id]);
+                delete camadasMapa[id];
+            }
         }
     });
 });
@@ -315,25 +356,22 @@ btnUsarGpsForm.addEventListener('click', () => {
     });
 });
 
-// 📍 FUNÇÃO GLOBAL DE EXCLUSÃO (Compatível com Módulos ES6)
+// FUNÇÃO PARA EXCLUIR DO FIRESTORE E DA TELA
 window.deletarElemento = async function(colecao, id) {
-    const confirmacao = confirm(`Deseja realmente excluir este item?`);
-    if (!confirmacao) return;
+    if (!confirm("Deseja realmente excluir este elemento do mapa?")) return;
 
     try {
-        // 1. Remove do Firestore usando o SDK v9+ (modular)
+        // 1. Remove do banco no Firestore
         await deleteDoc(doc(db, colecao, id));
 
-        // 2. Remove o elemento visual do mapa instantaneamente
-        map.eachLayer((layer) => {
-            if (layer.firestoreId === id) {
-                map.removeLayer(layer);
-            }
-        });
+        // 2. Remove da tela imediatamente (caso o snapshot demore a responder)
+        if (camadasMapa[id]) {
+            map.removeLayer(camadasMapa[id]);
+            delete camadasMapa[id];
+        }
 
-        alert("Item excluído com sucesso!");
     } catch (err) {
         console.error("Erro ao excluir do Firestore:", err);
-        alert("Erro ao excluir item: " + err.message);
+        alert("Erro ao excluir: " + err.message);
     }
 };
