@@ -1,6 +1,6 @@
 // main.js
 import { MenuManager } from './interface/MenuManager.js';
-import { db, collection, addDoc, onSnapshot } from './firebase-config.js';
+import { db, collection, addDoc, onSnapshot, doc, deleteDoc } from './firebase-config.js';
 
 // 1. INICIALIZAÇÃO DO MAPA LEAFLET
 const map = L.map('map').setView([-3.7319, -38.5267], 14);
@@ -71,37 +71,61 @@ function calcularMetragemCabo(coords) {
 
 // 2. SINCRONIZAÇÃO EM TEMPO REAL COM FIREBASE
 function escutarDadosNuvem() {
-    onSnapshot(collection(db, "caixas"), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const c = change.doc.data();
-                const iconeEmoji = c.tipo === 'CTO' ? '📦' : '⚡';
-                const marker = L.marker([c.lat, c.lng]).addTo(map);
-                
-                let conteudoPopup = `<b>${iconeEmoji} ${c.tipo}: ${c.nome}</b><br>`;
-                if (c.tipo === 'CTO') conteudoPopup += `Portas: ${c.portas}`;
-                if (c.tipo === 'CEO') conteudoPopup += `Fusões: ${c.fusoes}`;
-                
-                marker.bindPopup(conteudoPopup);
-            }
-        });
+   onSnapshot(collection(db, "caixas"), (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+            const id = change.doc.id; // 📍 ID do documento no Firestore
+            const c = change.doc.data();
+            const iconeEmoji = c.tipo === 'CTO' ? '📦' : '⚡';
+            const marker = L.marker([c.lat, c.lng]).addTo(map);
+
+            marker.firestoreId = id; // 📍 Guarda a referência no Marker
+
+            let conteudoPopup = `<b>${iconeEmoji} ${c.tipo}: ${c.nome}</b><br>`;
+            if (c.tipo === 'CTO') conteudoPopup += `Portas: ${c.portas}<br>`;
+            if (c.tipo === 'CEO') conteudoPopup += `Fusões: ${c.fusoes}<br>`;
+
+            // 📍 Botão de Excluir
+            conteudoPopup += `
+                <div style="margin-top: 8px; text-align: center;">
+                    <button onclick="deletarElemento('caixas', '${id}')"
+                            style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold;">
+                        🗑️ Excluir ${c.tipo}
+                    </button>
+                </div>
+            `;
+
+            marker.bindPopup(conteudoPopup);
+        }
     });
+});
 
     // ESCUTA EM TEMPO REAL DAS FIBRAS
-    onSnapshot(collection(db, "fibras"), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const f = change.doc.data();
+   onSnapshot(collection(db, "fibras"), (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+            const id = change.doc.id; // 📍 ID do documento no Firestore
+            const f = change.doc.data();
 
-                // Trata as coordenadas para o Leaflet desenhar [lat, lng]
-                const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
+            const latLngs = f.coords.map(c => Array.isArray(c) ? c : [c.lat, c.lng]);
+            const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
 
-                const polyline = L.polyline(latLngs, { color: '#dc3545', weight: 4 }).addTo(map);
-                polyline.bindPopup(`<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA || 0}m | Sobra B: ${f.sobraB || 0}m`);
-            }
-        });
+            polyline.firestoreId = id; // 📍 Guarda a referência na Polyline
+
+            let conteudoPopup = `<b>🧵 Cabo: ${f.nome}</b><br>Sobra A: ${f.sobraA || 0}m | Sobra B: ${f.sobraB || 0}m<br>`;
+            conteudoPopup += `
+                <div style="margin-top: 8px; text-align: center;">
+                    <button onclick="deletarElemento('fibras', '${id}')"
+                            style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:12px; font-weight:bold;">
+                        🗑️ Excluir Cabo
+                    </button>
+                </div>
+            `;
+
+            polyline.bindPopup(conteudoPopup);
+        }
     });
-}
+});
 escutarDadosNuvem();
 
 // 3. CLIQUE NO MAPA
@@ -289,3 +313,26 @@ btnUsarGpsForm.addEventListener('click', () => {
         document.getElementById('caixa-lng').value = longitude.toFixed(6);
     });
 });
+
+// 📍 FUNÇÃO GLOBAL DE EXCLUSÃO (Compatível com Módulos ES6)
+window.deletarElemento = async function(colecao, id) {
+    const confirmacao = confirm(`Deseja realmente excluir este item?`);
+    if (!confirmacao) return;
+
+    try {
+        // 1. Remove do Firestore usando o SDK v9+ (modular)
+        await deleteDoc(doc(db, colecao, id));
+
+        // 2. Remove o elemento visual do mapa instantaneamente
+        map.eachLayer((layer) => {
+            if (layer.firestoreId === id) {
+                map.removeLayer(layer);
+            }
+        });
+
+        alert("Item excluído com sucesso!");
+    } catch (err) {
+        console.error("Erro ao excluir do Firestore:", err);
+        alert("Erro ao excluir item: " + err.message);
+    }
+};
