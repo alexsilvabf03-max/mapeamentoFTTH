@@ -126,6 +126,7 @@ function escutarDadosNuvem() {
         }
     });
 });
+}
 escutarDadosNuvem();
 
 // 3. CLIQUE NO MAPA
